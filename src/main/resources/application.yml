@@ -9,27 +9,30 @@ quarkus:
     reactive:
       url: oracle:thin:@localhost:1522/ORCL
 
-  # Database Configuration
+  # Database Configuration - Optimized for 1000 TPS
 #  datasource:
 #    db-kind: oracle
 #    username: system
 #    password: admin
 #    reactive:
 #      url: oracle:thin:@localhost:1521/freepdb1
-      max-size: 20
-      event-loop-size: 8
-      idle-timeout: PT15M
-      max-lifetime: PT15M
+      max-size: 150              # Increased from 20 to handle 1000 TPS
+      event-loop-size: 32        # Increased from 8 for better parallelism
+      idle-timeout: PT10M        # Reduced from 15M to free idle connections faster
+      max-lifetime: PT30M        # Increased from 15M for connection stability
       cache-prepared-statements: true
-      reconnect-attempts: 3
-      reconnect-interval: PT2S
+      reconnect-attempts: 5      # Increased from 3 for better resilience
+      reconnect-interval: PT1S   # Reduced from 2S for faster recovery
       shared: false
       name: oracle-pool
       additional-properties:
-        oracle.jdbc.implicitStatementCacheSize: "250"
-        oracle.jdbc.ReadTimeout: "30000"
-        oracle.net.CONNECT_TIMEOUT: "5000"
-        oracle.jdbc.defaultRowPrefetch: "100"
+        oracle.jdbc.implicitStatementCacheSize: "500"      # Increased from 250
+        oracle.jdbc.ReadTimeout: "15000"                   # Reduced from 30000 for faster failure detection
+        oracle.net.CONNECT_TIMEOUT: "3000"                 # Reduced from 5000
+        oracle.jdbc.defaultRowPrefetch: "200"              # Increased from 100 for batch operations
+        oracle.jdbc.maxCachedBufferSize: "50"              # Added for LOB handling
+        oracle.net.disableOob: "true"                      # Disable out-of-band breaks for performance
+        oracle.jdbc.useFetchSizeWithLongColumn: "true"     # Optimize LONG column fetching
 
   log:
     level: INFO
@@ -49,8 +52,13 @@ mp:
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
-        enable.auto.commit: true
-        max.poll.records: 100
-        max.poll.interval.ms: 300000
+        enable.auto.commit: false          # Changed from true for better reliability
+        max.poll.records: 500              # Increased from 100 for higher throughput
+        max.poll.interval.ms: 60000        # Reduced from 300000 (5min to 1min)
         session.timeout.ms: 30000
-        failure-strategy: ignore
+        fetch.min.bytes: 1024              # Minimum bytes to fetch per poll
+        fetch.max.wait.ms: 500             # Max wait time for fetch
+        max.partition.fetch.bytes: 1048576 # 1MB per partition
+        failure-strategy: dead-letter-queue # Changed from ignore to handle failures properly
+        dead-letter-queue.topic: DC-DR-DLQ # Dead letter queue topic
+        throttled.unprocessed-record-max-age.ms: 60000 # Max age for unprocessed records
