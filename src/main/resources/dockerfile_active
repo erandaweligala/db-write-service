@@ -1,0 +1,19 @@
+FROM 10.200.140.150:5000/java-build:LANGUAGE_VERSION as builder
+RUN java -version
+COPY . /tmp
+WORKDIR /tmp
+RUN BUILD_CMD
+
+FROM 10.200.140.150:5000/java-run:LANGUAGE_VERSION
+RUN apk add --no-cache libstdc++
+RUN java -version ; mkdir -p /app /var/log/dte/ ; adduser -h /bin/bash -s /bin/bash -u 1100 --disabled-password dteuser
+COPY --from=builder /tmp/MICROSERVICE_JAR_PATH/quarkus-app/ /app/
+RUN mv /app/quarkus-run.jar /app/MICROSERVICE_NAME.jar
+COPY --from=builder /tmp/src/main/resources/* /app/
+RUN chown -R dteuser:dteuser /app /var/log/dte/
+RUN chmod -R 777 /var/log/dte/
+USER dteuser
+WORKDIR /home/dteuser
+ENV JAVA_OPTS ""
+
+

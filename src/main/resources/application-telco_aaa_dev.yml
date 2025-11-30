@@ -1,0 +1,60 @@
+# Server Configuration
+quarkus:
+  http:
+    port: 8085
+  datasource:
+    db-kind: oracle
+    username: aaa
+    password: Aaa!89nky78D
+    reactive:
+      url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
+
+      # Database Configuration
+      #  datasource:
+      #    db-kind: oracle
+      #    username: system
+      #    password: admin
+      #    reactive:
+      #      url: oracle:thin:@localhost:1521/freepdb1
+      max-size: 20
+      event-loop-size: 8
+      idle-timeout: PT15M
+      max-lifetime: PT15M
+      cache-prepared-statements: true
+      reconnect-attempts: 3
+      reconnect-interval: PT2S
+      shared: false
+      name: oracle-pool
+      additional-properties:
+        oracle.jdbc.implicitStatementCacheSize: "250"
+        oracle.jdbc.ReadTimeout: "30000"
+        oracle.net.CONNECT_TIMEOUT: "5000"
+        oracle.jdbc.defaultRowPrefetch: "100"
+
+  log:
+    level: INFO
+    console:
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+  console:
+    color: true
+# Kafka Configuration
+
+kafka:
+  bootstrap:
+    servers: confluent-ctrl-0-svc.rkafkacone.svc.cluster.local:9092
+
+mp:
+  messaging:
+    incoming:
+      db-write-events:
+        connector: smallrye-kafka
+        topic: DC-DR
+        group.id: accounting-dc-group
+        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: earliest
+        enable.auto.commit: true
+        max.poll.records: 100
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 30000
+        failure-strategy: ignore
