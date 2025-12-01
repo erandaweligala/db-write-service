@@ -9,13 +9,6 @@ quarkus:
     reactive:
       url: oracle:thin:@localhost:1522/ORCL
 
-  # Database Configuration - Optimized for 1000 TPS
-#  datasource:
-#    db-kind: oracle
-#    username: system
-#    password: admin
-#    reactive:
-#      url: oracle:thin:@localhost:1521/freepdb1
       max-size: 150              # Increased from 20 to handle 1000 TPS
       event-loop-size: 32        # Increased from 8 for better parallelism
       idle-timeout: PT10M        # Reduced from 15M to free idle connections faster

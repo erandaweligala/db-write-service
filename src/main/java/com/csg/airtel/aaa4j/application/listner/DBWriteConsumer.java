@@ -22,10 +22,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class DBWriteConsumer {
     private static final Logger log = Logger.getLogger(DBWriteConsumer.class);
 
-    // Batch configuration for high throughput
-    private static final int BATCH_SIZE = 50;  // Process 50 records per batch
-    private static final Duration BATCH_TIMEOUT = Duration.ofMillis(100);  // Max 100ms wait for batch
-
     private final DBWriteService dbWriteService;
     private final AtomicInteger processedCounter = new AtomicInteger(0);
 
@@ -66,44 +62,4 @@ public class DBWriteConsumer {
                 });
     }
 
-    /**
-     * Alternative batch processing consumer (currently not active)
-     * To use this, change the @Incoming method signature to accept List<Message<DBWriteRequest>>
-     * and enable batch mode in Kafka consumer configuration
-     */
-    public Uni<Void> consumeBatchAccountingEvents(List<Message<DBWriteRequest>> messages) {
-        if (messages.isEmpty()) {
-            return Uni.createFrom().voidItem();
-        }
-
-        log.infof("Processing batch of %d messages", messages.size());
-
-        List<DBWriteRequest> requests = new ArrayList<>(messages.size());
-        for (Message<DBWriteRequest> message : messages) {
-            requests.add(message.getPayload());
-        }
-
-        return dbWriteService.processBatchDbWriteRequests(requests)
-                .onItem().transformToUni(result -> {
-                    // Acknowledge all messages in batch
-                    List<Uni<Void>> acks = new ArrayList<>(messages.size());
-                    for (Message<DBWriteRequest> message : messages) {
-                        acks.add(Uni.createFrom().completionStage(message.ack()));
-                    }
-                    return Uni.combine().all().unis(acks).discardItems();
-                })
-                .onItem().invoke(() -> {
-                    int count = processedCounter.addAndGet(messages.size());
-                    log.infof("Batch processed successfully. Total messages: %d", count);
-                })
-                .onFailure().recoverWithUni(throwable -> {
-                    log.errorf(throwable, "Error processing batch of %d events", messages.size());
-                    // Nack all messages in batch
-                    List<Uni<Void>> nacks = new ArrayList<>(messages.size());
-                    for (Message<DBWriteRequest> message : messages) {
-                        nacks.add(Uni.createFrom().completionStage(message.nack(throwable)));
-                    }
-                    return Uni.combine().all().unis(nacks).discardItems();
-                });
-    }
 }

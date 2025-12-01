@@ -33,36 +33,5 @@ public class DBWriteService {
         return Uni.createFrom().voidItem();
     }
 
-    /**
-     * Process multiple DB write requests in a single batch transaction
-     * Optimized for high throughput (1000+ TPS)
-     *
-     * @param requests List of DB write requests
-     * @return Uni<Void> completing when all updates are done
-     */
-    @LogDomainService
-    public Uni<Void> processBatchDbWriteRequests(List<DBWriteRequest> requests) {
-        if (requests == null || requests.isEmpty()) {
-            return Uni.createFrom().voidItem();
-        }
-
-        List<DBWriteRepository.UpdateOperation> operations = new ArrayList<>(requests.size());
-
-        for (DBWriteRequest request : requests) {
-            if ("UPDATE_EVENT".equalsIgnoreCase(request.getEventType())) {
-                operations.add(new DBWriteRepository.UpdateOperation(
-                        request.getTableName(),
-                        request.getColumnValues(),
-                        request.getWhereConditions()
-                ));
-            }
-        }
-
-        if (operations.isEmpty()) {
-            return Uni.createFrom().voidItem();
-        }
-
-        return dbWriteRepository.batchUpdate(operations).replaceWithVoid();
-    }
 
 }

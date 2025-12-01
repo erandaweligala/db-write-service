@@ -23,8 +23,12 @@ public class DatabasePoolWarmup {
     private static final int WARMUP_CONNECTIONS = 50;  // Warm up 50 connections
     private static final String WARMUP_QUERY = "SELECT 1 FROM DUAL";  // Oracle warmup query
 
+
+    private final Pool dbClient;
     @Inject
-    Pool dbClient;
+    public DatabasePoolWarmup(Pool dbClient) {
+        this.dbClient = dbClient;
+    }
 
     void onStart(@Observes StartupEvent ev) {
         log.info("Starting database connection pool warm-up...");
