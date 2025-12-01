@@ -6,7 +6,8 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.PreparedQuery;
-import io.vertx.mutiny.sqlclient.SqlResult;
+import io.vertx.mutiny.sqlclient.Row;
+import io.vertx.mutiny.sqlclient.RowSet;
 import io.vertx.mutiny.sqlclient.Tuple;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,10 +30,10 @@ class DBWriteRepositoryTest {
     private Pool mockPool;
 
     @Mock
-    private PreparedQuery<SqlResult> mockPreparedQuery;
+    private PreparedQuery<RowSet<Row>> mockPreparedQuery;
 
     @Mock
-    private SqlResult mockSqlResult;
+    private RowSet<Row> mockRowSet;
 
     private DatabaseCircuitBreaker circuitBreaker;
     private PerformanceMetrics metrics;
@@ -57,8 +58,8 @@ class DBWriteRepositoryTest {
         whereConditions.put("id", 1);
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(1);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(1);
 
         // Execute
         var result = repository.update("users", columnValues, whereConditions).subscribe().asCompletionStage().toCompletableFuture();
@@ -111,8 +112,8 @@ class DBWriteRepositoryTest {
         whereConditions.put("id", 1);
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(1);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(1);
 
         var result = repository.update("users", columnValues, whereConditions);
 
@@ -129,8 +130,8 @@ class DBWriteRepositoryTest {
         whereConditions.put("id", 1);
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(1);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(1);
 
         var result = repository.update("users", columnValues, whereConditions);
 
@@ -147,8 +148,8 @@ class DBWriteRepositoryTest {
         whereConditions.put("id", 1);
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(1);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(1);
 
         var result = repository.update("users", columnValues, whereConditions);
 
@@ -165,8 +166,8 @@ class DBWriteRepositoryTest {
         whereConditions.put("id", 1);
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(1);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(1);
 
         var result = repository.update("users", columnValues, whereConditions);
 
@@ -183,8 +184,8 @@ class DBWriteRepositoryTest {
         whereConditions.put("id", 1);
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(1);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(1);
 
         var result = repository.update("users", columnValues, whereConditions);
 
@@ -202,8 +203,8 @@ class DBWriteRepositoryTest {
         whereConditions.put("id", 1);
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(1);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(1);
 
         var result = repository.update("users", columnValues, whereConditions);
 
@@ -220,8 +221,8 @@ class DBWriteRepositoryTest {
         whereConditions.put("id", 1);
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(1);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(1);
 
         var result = repository.update("users", columnValues, whereConditions);
 
@@ -238,8 +239,8 @@ class DBWriteRepositoryTest {
         whereConditions.put("id", 1);
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(1);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(1);
 
         var result = repository.update("users", columnValues, whereConditions);
 
@@ -258,8 +259,8 @@ class DBWriteRepositoryTest {
         whereConditions.put("status", "active");
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(2);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(2);
 
         var result = repository.update("users", columnValues, whereConditions);
 
@@ -276,8 +277,8 @@ class DBWriteRepositoryTest {
         whereConditions.put("id", 1);
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(1);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(1);
 
         var result = repository.update("users", columnValues, whereConditions);
 
@@ -350,8 +351,8 @@ class DBWriteRepositoryTest {
         String longTableName = "very_long_table_name_that_might_be_used_in_production_systems";
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(1);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(1);
 
         var result = repository.update(longTableName, columnValues, whereConditions);
 
@@ -370,8 +371,8 @@ class DBWriteRepositoryTest {
         whereConditions.put("id", 1);
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(1);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(1);
 
         var result = repository.update("users", columnValues, whereConditions);
 
@@ -388,8 +389,8 @@ class DBWriteRepositoryTest {
         whereConditions.put("id", 1);
 
         when(mockPool.preparedQuery(anyString())).thenReturn(mockPreparedQuery);
-        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockSqlResult));
-        when(mockSqlResult.rowCount()).thenReturn(1);
+        when(mockPreparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(mockRowSet));
+        when(mockRowSet.rowCount()).thenReturn(1);
 
         var result = repository.update("users", columnValues, whereConditions);
 
