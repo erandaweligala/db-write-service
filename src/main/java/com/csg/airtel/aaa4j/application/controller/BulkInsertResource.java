@@ -11,16 +11,10 @@ import org.jboss.logging.Logger;
 
 import java.util.Map;
 
-/**
- * REST API for executing bulk database inserts.
- *
- * Endpoints:
- * - POST /api/bulk-insert           - Run bulk insert with default 1M records
- * - POST /api/bulk-insert/custom    - Run bulk insert with custom parameters
- * - POST /api/bulk-insert/setup     - Create the target table
- * - DELETE /api/bulk-insert/cleanup - Truncate the target table
- * - GET /api/bulk-insert/count      - Get current record count
- */
+//todo insert USER_ID	BANDWIDTH	BILLING	BILLING_ACCOUNT_REF	CIRCUIT_ID	CONCURRENCY	CONTACT_EMAIL	CONTACT_NAME	CONTACT_NUMBER	CREATED_DATE	CUSTOM_TIMEOUT	CYCLE_DATE	ENCRYPTION_METHOD	GROUP_ID	IDLE_TIMEOUT	IP_ALLOCATION	IP_POOL_NAME	IPV4	IPV6	MAC_ADDRESS	NAS_PORT_TYPE	PASSWORD	REMOTE_ID	REQUEST_ID	SESSION_TIMEOUT	STATUS	UPDATED_DATE	USER_NAME	VLAN_ID	NAS_IP_ADDRESS	SUBSCRIPTION
+//todo USER_ID(primary),NAS_PORT_TYPE,REQUEST_ID(uniqe_key),STATUS(status in ('ACTIVE','SUSPENDED','INACTIVE')),USER_NAME((uniqe_key)),SUBSCRIPTION subscription in ('PREPAID','POSTPAID','HYBRID'),MAC_ADDRESS(uniqe)
+//todo PASSWORD = MAC= 30% , PAP = 30%, CHAP = 40%
+//todo genarate values this scenarios
 @Path("/api/bulk-insert")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
