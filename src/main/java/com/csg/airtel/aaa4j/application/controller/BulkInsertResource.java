@@ -11,17 +11,36 @@ import org.jboss.logging.Logger;
 
 import java.util.Map;
 
-//todo insert USER_ID	BANDWIDTH	BILLING	BILLING_ACCOUNT_REF	CIRCUIT_ID	CONCURRENCY	CONTACT_EMAIL	CONTACT_NAME	CONTACT_NUMBER	CREATED_DATE	CUSTOM_TIMEOUT	CYCLE_DATE	ENCRYPTION_METHOD	GROUP_ID	IDLE_TIMEOUT	IP_ALLOCATION	IP_POOL_NAME	IPV4	IPV6	MAC_ADDRESS	NAS_PORT_TYPE	PASSWORD	REMOTE_ID	REQUEST_ID	SESSION_TIMEOUT	STATUS	UPDATED_DATE	USER_NAME	VLAN_ID	NAS_IP_ADDRESS	SUBSCRIPTION
-//todo USER_ID(primary),NAS_PORT_TYPE,REQUEST_ID(uniqe_key),STATUS(status in ('ACTIVE','SUSPENDED','INACTIVE')),USER_NAME((uniqe_key)),SUBSCRIPTION subscription in ('PREPAID','POSTPAID','HYBRID'),MAC_ADDRESS(uniqe)
-//todo PASSWORD = MAC= 30% , PAP = 30%, CHAP = 40%
-//todo genarate values this scenarios
+/**
+ * REST API for bulk insert operations with the USER schema.
+ *
+ * Schema Fields:
+ * USER_ID, BANDWIDTH, BILLING, BILLING_ACCOUNT_REF, CIRCUIT_ID, CONCURRENCY,
+ * CONTACT_EMAIL, CONTACT_NAME, CONTACT_NUMBER, CREATED_DATE, CUSTOM_TIMEOUT,
+ * CYCLE_DATE, ENCRYPTION_METHOD, GROUP_ID, IDLE_TIMEOUT, IP_ALLOCATION, IP_POOL_NAME,
+ * IPV4, IPV6, MAC_ADDRESS, NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID,
+ * SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, NAS_IP_ADDRESS, SUBSCRIPTION
+ *
+ * Constraints:
+ * - USER_ID: Primary Key
+ * - USER_NAME: Unique Key
+ * - REQUEST_ID: Unique Key
+ * - MAC_ADDRESS: Unique
+ * - STATUS: CHECK constraint (ACTIVE, SUSPENDED, INACTIVE)
+ * - SUBSCRIPTION: CHECK constraint (PREPAID, POSTPAID, HYBRID)
+ *
+ * Password Distribution:
+ * - MAC-based: 30%
+ * - PAP: 30%
+ * - CHAP: 40%
+ */
 @Path("/api/bulk-insert")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 public class BulkInsertResource {
 
     private static final Logger log = Logger.getLogger(BulkInsertResource.class);
-    private static final String DEFAULT_TABLE = "BULK_TEST_DATA";
+    private static final String DEFAULT_TABLE = "USER_DATA";
 
     private final BulkInsertScript bulkInsertScript;
 
@@ -91,9 +110,16 @@ public class BulkInsertResource {
     }
 
     /**
-     * Create the target table
+     * Create the target table with USER schema
      *
      * POST /api/bulk-insert/setup?tableName=MY_TABLE
+     *
+     * Creates table with columns:
+     * USER_ID (PK), BANDWIDTH, BILLING, BILLING_ACCOUNT_REF, CIRCUIT_ID, CONCURRENCY,
+     * CONTACT_EMAIL, CONTACT_NAME, CONTACT_NUMBER, CREATED_DATE, CUSTOM_TIMEOUT,
+     * CYCLE_DATE, ENCRYPTION_METHOD, GROUP_ID, IDLE_TIMEOUT, IP_ALLOCATION, IP_POOL_NAME,
+     * IPV4, IPV6, MAC_ADDRESS (UNIQUE), NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID (UNIQUE),
+     * SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME (UNIQUE), VLAN_ID, NAS_IP_ADDRESS, SUBSCRIPTION
      */
     @POST
     @Path("/setup")
@@ -107,6 +133,34 @@ public class BulkInsertResource {
                 )).build())
                 .onFailure().recoverWithItem(e -> {
                     log.errorf(e, "Table setup failed");
+                    return Response.serverError()
+                            .entity(Map.of("error", e.getMessage()))
+                            .build();
+                });
+    }
+
+    /**
+     * Create indexes for the target table
+     *
+     * POST /api/bulk-insert/indexes?tableName=MY_TABLE
+     *
+     * Creates indexes on:
+     * - STATUS
+     * - SUBSCRIPTION
+     * - NAS_PORT_TYPE
+     */
+    @POST
+    @Path("/indexes")
+    public Uni<Response> createIndexes(@QueryParam("tableName") @DefaultValue(DEFAULT_TABLE) String tableName) {
+        log.infof("Creating indexes for table: %s", tableName);
+
+        return bulkInsertScript.createIndexes(tableName)
+                .map(v -> Response.ok(Map.of(
+                        "message", "Indexes created successfully",
+                        "tableName", tableName
+                )).build())
+                .onFailure().recoverWithItem(e -> {
+                    log.errorf(e, "Index creation failed");
                     return Response.serverError()
                             .entity(Map.of("error", e.getMessage()))
                             .build();
