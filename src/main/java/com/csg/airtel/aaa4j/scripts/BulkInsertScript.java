@@ -115,6 +115,7 @@ public class BulkInsertScript {
         int totalBatches = (totalRecords + batchSize - 1) / batchSize;
 
         return Multi.createFrom().range(0, totalBatches)
+                .capDemandsTo(CONCURRENT_BATCHES)
                 .onItem().transformToUniAndMerge(batchIndex -> {
                     int startIndex = batchIndex * batchSize;
                     int endIndex = Math.min(startIndex + batchSize, totalRecords);
@@ -148,7 +149,7 @@ public class BulkInsertScript {
                                 log.errorf(e, "Batch %d failed: %s", batchIndex, e.getMessage());
                             })
                             .onFailure().recoverWithItem(0);
-                }, CONCURRENT_BATCHES) //todo Expected 1 argument but found 2
+                })
                 .collect().asList()
                 .map(results -> {
                     Duration totalDuration = Duration.between(startTime, Instant.now());
@@ -390,6 +391,7 @@ public class BulkInsertScript {
 
         return Multi.createFrom().range(0, totalRecords)
                 .group().intoLists().of(batchSize)
+                .capDemandsTo(CONCURRENT_BATCHES)
                 .onItem().transformToUniAndMerge(batch -> {
                     List<Tuple> tuples = new ArrayList<>(batch.size());
 
@@ -398,40 +400,41 @@ public class BulkInsertScript {
                         String userName = generateUniqueUserName(recordId);
                         String requestId = generateUniqueRequestId(recordId);
                         String macAddress = generateUniqueMacAddress(recordId);
-                        //todo Cannot resolve method 'of(int, String, String, String, String, int, String, String, String, LocalDateTime, int, int, String, String, int, String, String, String, String, String, String, String, String, String, int, String, LocalDateTime, String, int, String, String)'
-                        tuples.add(Tuple.of(
-                                recordId,                                                          // USER_ID
-                                BANDWIDTHS[random.nextInt(BANDWIDTHS.length)],                    // BANDWIDTH
-                                BILLING_TYPES[random.nextInt(BILLING_TYPES.length)],              // BILLING
-                                "BA-" + String.format("%010d", recordId),                         // BILLING_ACCOUNT_REF
-                                "CKT-" + String.format("%08d", random.nextInt(100000000)),        // CIRCUIT_ID
-                                random.nextInt(10) + 1,                                           // CONCURRENCY
-                                userName.toLowerCase() + "@telco.com",                            // CONTACT_EMAIL
-                                generateContactName(recordId),                                     // CONTACT_NAME
-                                generatePhoneNumber(),                                             // CONTACT_NUMBER
-                                LocalDateTime.now(),                                               // CREATED_DATE
-                                random.nextInt(3600) + 60,                                        // CUSTOM_TIMEOUT
-                                random.nextInt(28) + 1,                                           // CYCLE_DATE
-                                ENCRYPTION_METHODS[random.nextInt(ENCRYPTION_METHODS.length)],    // ENCRYPTION_METHOD
-                                "GRP-" + String.format("%05d", random.nextInt(10000)),            // GROUP_ID
-                                random.nextInt(1800) + 300,                                       // IDLE_TIMEOUT
-                                generateIPAllocation(),                                            // IP_ALLOCATION
-                                IP_POOL_NAMES[random.nextInt(IP_POOL_NAMES.length)],              // IP_POOL_NAME
-                                generateIPv4(),                                                    // IPV4
-                                generateIPv6(),                                                    // IPV6
-                                macAddress,                                                        // MAC_ADDRESS
-                                NAS_PORT_TYPES[random.nextInt(NAS_PORT_TYPES.length)],            // NAS_PORT_TYPE
-                                generatePassword(macAddress),                                      // PASSWORD
-                                "REM-" + UUID.randomUUID().toString().substring(0, 8),            // REMOTE_ID
-                                requestId,                                                         // REQUEST_ID
-                                random.nextInt(86400) + 3600,                                     // SESSION_TIMEOUT
-                                STATUSES[random.nextInt(STATUSES.length)],                        // STATUS
-                                LocalDateTime.now(),                                               // UPDATED_DATE
-                                userName,                                                          // USER_NAME
-                                random.nextInt(4094) + 1,                                         // VLAN_ID
-                                generateNasIpAddress(),                                            // NAS_IP_ADDRESS
-                                SUBSCRIPTIONS[random.nextInt(SUBSCRIPTIONS.length)]               // SUBSCRIPTION
-                        ));
+
+                        List<Object> values = new ArrayList<>(31);
+                        values.add(recordId);                                                      // USER_ID
+                        values.add(BANDWIDTHS[random.nextInt(BANDWIDTHS.length)]);                // BANDWIDTH
+                        values.add(BILLING_TYPES[random.nextInt(BILLING_TYPES.length)]);          // BILLING
+                        values.add("BA-" + String.format("%010d", recordId));                     // BILLING_ACCOUNT_REF
+                        values.add("CKT-" + String.format("%08d", random.nextInt(100000000)));    // CIRCUIT_ID
+                        values.add(random.nextInt(10) + 1);                                       // CONCURRENCY
+                        values.add(userName.toLowerCase() + "@telco.com");                        // CONTACT_EMAIL
+                        values.add(generateContactName(recordId));                                 // CONTACT_NAME
+                        values.add(generatePhoneNumber());                                         // CONTACT_NUMBER
+                        values.add(LocalDateTime.now());                                           // CREATED_DATE
+                        values.add(random.nextInt(3600) + 60);                                    // CUSTOM_TIMEOUT
+                        values.add(random.nextInt(28) + 1);                                       // CYCLE_DATE
+                        values.add(ENCRYPTION_METHODS[random.nextInt(ENCRYPTION_METHODS.length)]); // ENCRYPTION_METHOD
+                        values.add("GRP-" + String.format("%05d", random.nextInt(10000)));        // GROUP_ID
+                        values.add(random.nextInt(1800) + 300);                                   // IDLE_TIMEOUT
+                        values.add(generateIPAllocation());                                        // IP_ALLOCATION
+                        values.add(IP_POOL_NAMES[random.nextInt(IP_POOL_NAMES.length)]);          // IP_POOL_NAME
+                        values.add(generateIPv4());                                                // IPV4
+                        values.add(generateIPv6());                                                // IPV6
+                        values.add(macAddress);                                                    // MAC_ADDRESS
+                        values.add(NAS_PORT_TYPES[random.nextInt(NAS_PORT_TYPES.length)]);        // NAS_PORT_TYPE
+                        values.add(generatePassword(macAddress));                                  // PASSWORD
+                        values.add("REM-" + UUID.randomUUID().toString().substring(0, 8));        // REMOTE_ID
+                        values.add(requestId);                                                     // REQUEST_ID
+                        values.add(random.nextInt(86400) + 3600);                                 // SESSION_TIMEOUT
+                        values.add(STATUSES[random.nextInt(STATUSES.length)]);                    // STATUS
+                        values.add(LocalDateTime.now());                                           // UPDATED_DATE
+                        values.add(userName);                                                      // USER_NAME
+                        values.add(random.nextInt(4094) + 1);                                     // VLAN_ID
+                        values.add(generateNasIpAddress());                                        // NAS_IP_ADDRESS
+                        values.add(SUBSCRIPTIONS[random.nextInt(SUBSCRIPTIONS.length)]);          // SUBSCRIPTION
+
+                        tuples.add(Tuple.from(values));
                     }
 
                     return client.preparedQuery(sql)
@@ -451,7 +454,7 @@ public class BulkInsertScript {
                                 log.errorf(e, "Batch insert failed: %s", e.getMessage());
                             })
                             .onFailure().recoverWithItem(0);
-                }, CONCURRENT_BATCHES)
+                })
                 .collect().asList()
                 .map(results -> {
                     Duration totalDuration = Duration.between(startTime, Instant.now());
