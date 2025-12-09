@@ -211,7 +211,7 @@ public class BulkInsertScript {
             // Generate data for each record
             values.add(recordId);                                                          // USER_ID (primary key)
             values.add(BANDWIDTHS[random.nextInt(BANDWIDTHS.length)]);                    // BANDWIDTH
-            values.add("3");              // BILLING
+            values.add(3);                // BILLING
             values.add("BA-" + String.format("%010d", recordId));                         // BILLING_ACCOUNT_REF
             values.add("CKT-" + String.format("%08d", random.nextInt(100000000)));        // CIRCUIT_ID
             values.add(random.nextInt(10) + 1);                                           // CONCURRENCY (1-10)
