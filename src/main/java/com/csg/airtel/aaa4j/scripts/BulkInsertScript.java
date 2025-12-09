@@ -99,7 +99,7 @@ public class BulkInsertScript {
      * @param batchSize Number of records per batch
      * @return Uni containing the result summary
      */
-    //todo need impment after insert  data write csv file and chap password  convert before md5 value add file
+
     public Uni<BulkInsertResult> executeBulkInsert(String tableName, int totalRecords, int batchSize) {
         log.infof("Starting bulk insert: table=%s, totalRecords=%d, batchSize=%d",
                 tableName, totalRecords, batchSize);
@@ -207,7 +207,7 @@ public class BulkInsertScript {
             // Generate data for each record
             values.add(recordId);                                                          // USER_ID (primary key)
             values.add(BANDWIDTHS[random.nextInt(BANDWIDTHS.length)]);                    // BANDWIDTH
-            values.add(BILLING_TYPES[random.nextInt(BILLING_TYPES.length)]);              // BILLING
+            values.add("3");              // BILLING
             values.add("BA-" + String.format("%010d", recordId));                         // BILLING_ACCOUNT_REF
             values.add("CKT-" + String.format("%08d", random.nextInt(100000000)));        // CIRCUIT_ID
             values.add(random.nextInt(10) + 1);                                           // CONCURRENCY (1-10)
@@ -216,7 +216,7 @@ public class BulkInsertScript {
             values.add(generatePhoneNumber());                                             // CONTACT_NUMBER
             values.add(LocalDateTime.now());                                               // CREATED_DATE
             values.add(random.nextInt(3600) + 60);                                        // CUSTOM_TIMEOUT (60-3660 seconds)
-            values.add(random.nextInt(28) + 1);                                           // CYCLE_DATE (1-28)
+            values.add(8);                                           // CYCLE_DATE (1-28)
             values.add(ENCRYPTION_METHODS[random.nextInt(ENCRYPTION_METHODS.length)]);    // ENCRYPTION_METHOD
             values.add("GRP-" + String.format("%05d", random.nextInt(10000)));            // GROUP_ID
             values.add(random.nextInt(1800) + 300);                                       // IDLE_TIMEOUT (300-2100 seconds)
@@ -299,6 +299,7 @@ public class BulkInsertScript {
             return "PAP:" + UUID.randomUUID().toString().substring(0, 12);
         } else {
             // 40% CHAP (Challenge-Handshake Authentication Protocol)
+            //todo need impment after insert  data write csv file and chap password  convert before md5 value add file
             //todo need to implement hash md5 only chap
             return "CHAP:" + UUID.randomUUID().toString().substring(0, 16);
         }
@@ -407,7 +408,7 @@ public class BulkInsertScript {
                         List<Object> values = new ArrayList<>(31);
                         values.add(recordId);                                                      // USER_ID
                         values.add(BANDWIDTHS[random.nextInt(BANDWIDTHS.length)]);                // BANDWIDTH
-                        values.add(BILLING_TYPES[random.nextInt(BILLING_TYPES.length)]);          // BILLING
+                        values.add(3);          // BILLING
                         values.add("BA-" + String.format("%010d", recordId));                     // BILLING_ACCOUNT_REF
                         values.add("CKT-" + String.format("%08d", random.nextInt(100000000)));    // CIRCUIT_ID
                         values.add(random.nextInt(10) + 1);                                       // CONCURRENCY
@@ -416,7 +417,7 @@ public class BulkInsertScript {
                         values.add(generatePhoneNumber());                                         // CONTACT_NUMBER
                         values.add(LocalDateTime.now());                                           // CREATED_DATE
                         values.add(random.nextInt(3600) + 60);                                    // CUSTOM_TIMEOUT
-                        values.add(random.nextInt(28) + 1);                                       // CYCLE_DATE
+                        values.add(8);                                       // CYCLE_DATE
                         values.add(ENCRYPTION_METHODS[random.nextInt(ENCRYPTION_METHODS.length)]); // ENCRYPTION_METHOD
                         values.add("GRP-" + String.format("%05d", random.nextInt(10000)));        // GROUP_ID
                         values.add(random.nextInt(1800) + 300);                                   // IDLE_TIMEOUT
