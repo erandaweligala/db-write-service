@@ -411,7 +411,7 @@ public class BulkInsertScript {
                         List<Object> values = new ArrayList<>(31);
                         values.add(recordId);                                                      // USER_ID
                         values.add(BANDWIDTHS[random.nextInt(BANDWIDTHS.length)]);                // BANDWIDTH
-                        values.add(3);          // BILLING
+                        values.add("3");        // BILLING
                         values.add("BA-" + String.format("%010d", recordId));                     // BILLING_ACCOUNT_REF
                         values.add("CKT-" + String.format("%08d", random.nextInt(100000000)));    // CIRCUIT_ID
                         values.add(random.nextInt(10) + 1);                                       // CONCURRENCY
