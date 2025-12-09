@@ -6,6 +6,8 @@ import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.Row;
 import io.vertx.mutiny.sqlclient.SqlResult;
 import io.vertx.mutiny.sqlclient.Tuple;
+import com.csg.airtel.aaa4j.infrastructure.CsvExportUtil;
+import com.csg.airtel.aaa4j.infrastructure.CsvExportUtil.CsvExportResult;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
@@ -65,11 +67,13 @@ public class BulkInsertScript {
     private final Set<String> usedMacAddresses = ConcurrentHashMap.newKeySet();
 
     private final Pool client;
+    private final CsvExportUtil csvExportUtil;
     private final Random random = new Random();
 
     @Inject
-    public BulkInsertScript(Pool client) {
+    public BulkInsertScript(Pool client, CsvExportUtil csvExportUtil) {
         this.client = client;
+        this.csvExportUtil = csvExportUtil;
     }
 
     /**
@@ -299,8 +303,7 @@ public class BulkInsertScript {
             return "PAP:" + UUID.randomUUID().toString().substring(0, 12);
         } else {
             // 40% CHAP (Challenge-Handshake Authentication Protocol)
-            //todo need impment after insert  data write csv file and chap password  convert before md5 value add file
-            //todo need to implement hash md5 only chap
+            // Note: CHAP passwords are hashed with MD5 during CSV export (see CsvExportUtil)
             return "CHAP:" + UUID.randomUUID().toString().substring(0, 16);
         }
     }
@@ -475,6 +478,41 @@ public class BulkInsertScript {
                             recordsPerSecond
                     );
                 });
+    }
+
+    /**
+     * Execute bulk insert and then export data to CSV file.
+     * CHAP passwords are hashed with MD5 in the exported CSV.
+     *
+     * @param tableName The target table name
+     * @param totalRecords Total number of records to insert
+     * @param batchSize Number of records per batch
+     * @param outputDir The directory to write the CSV file (null for temp directory)
+     * @return Uni containing combined result of insert and export
+     */
+    public Uni<BulkInsertWithExportResult> executeBulkInsertWithCsvExport(String tableName, int totalRecords,
+                                                                           int batchSize, String outputDir) {
+        log.infof("Starting bulk insert with CSV export: table=%s, totalRecords=%d, batchSize=%d",
+                tableName, totalRecords, batchSize);
+
+        return executeBulkInsert(tableName, totalRecords, batchSize)
+                .chain(insertResult -> {
+                    log.infof("Bulk insert completed, starting CSV export...");
+                    return csvExportUtil.exportToCsv(tableName, outputDir)
+                            .map(exportResult -> new BulkInsertWithExportResult(insertResult, exportResult));
+                });
+    }
+
+    /**
+     * Export existing data from table to CSV file.
+     * CHAP passwords are hashed with MD5 in the exported CSV.
+     *
+     * @param tableName The source table name
+     * @param outputDir The directory to write the CSV file (null for temp directory)
+     * @return Uni containing the export result
+     */
+    public Uni<CsvExportResult> exportToCsv(String tableName, String outputDir) {
+        return csvExportUtil.exportToCsv(tableName, outputDir);
     }
 
     /**
@@ -653,6 +691,22 @@ public class BulkInsertScript {
             } else {
                 return String.format("%.1fs", duration.toMillis() / 1000.0);
             }
+        }
+    }
+
+    /**
+     * Combined result record for bulk insert with CSV export operations.
+     */
+    public record BulkInsertWithExportResult(
+            BulkInsertResult insertResult,
+            CsvExportResult exportResult
+    ) {
+        @Override
+        public String toString() {
+            return String.format(
+                    "BulkInsertWithExportResult{insert=%s, export=%s}",
+                    insertResult, exportResult
+            );
         }
     }
 }
