@@ -9,6 +9,7 @@ quarkus:
     reactive:
       url: oracle:thin:@localhost:1522/ORCL
 
+      # Connection Pool Configuration
       max-size: 150              # Increased from 20 to handle 1000 TPS
       event-loop-size: 32        # Increased from 8 for better parallelism
       idle-timeout: PT10M        # Reduced from 15M to free idle connections faster
@@ -18,17 +19,32 @@ quarkus:
       reconnect-interval: PT1S   # Reduced from 2S for faster recovery
       shared: false
       name: oracle-pool
+
+      # Vert.x/Quarkus Level Connection Timeout (CRITICAL - controls initial connection)
+      connect-timeout: PT30S     # 30s timeout for connection establishment at Vert.x level
+
+      # Oracle JDBC Driver Properties
       additional-properties:
-        oracle.jdbc.implicitStatementCacheSize: "500"      # Increased from 250
-        oracle.jdbc.ReadTimeout: "60000"                   # Increased to 60s for high CPU/load scenarios
-        oracle.net.CONNECT_TIMEOUT: "30000"                # Increased to 30s for connection establishment
-        oracle.net.READ_TIMEOUT: "60000"                   # Socket-level read timeout (60s)
+        # Statement Caching
+        oracle.jdbc.implicitStatementCacheSize: "500"
+
+        # Connection Timeout Settings (Oracle JDBC 23.x)
+        oracle.jdbc.ReadTimeout: "60000"                   # Read timeout in ms (60s)
+        oracle.net.CONNECT_TIMEOUT: "30000"                # JDBC connection timeout in ms (30s)
+        oracle.net.READ_TIMEOUT: "60000"                   # Socket read timeout in ms (60s)
+        oracle.net.TCP_CONNTIMEOUT_STR: "30000"            # TCP connection timeout in ms (30s)
+        oracle.net.ns.SOCKET_CONNECT_TIMEOUT: "30000"      # Socket connect timeout in ms (30s)
         oracle.jdbc.loginTimeout: "60"                     # Login timeout in seconds
-        oracle.jdbc.defaultRowPrefetch: "200"              # Increased from 100 for batch operations
-        oracle.jdbc.maxCachedBufferSize: "50"              # Added for LOB handling
-        oracle.net.disableOob: "true"                      # Disable out-of-band breaks for performance
+
+        # Performance & Batch Optimization
+        oracle.jdbc.defaultRowPrefetch: "200"              # Row prefetch for batch operations
+        oracle.jdbc.maxCachedBufferSize: "50"              # LOB handling buffer
         oracle.jdbc.useFetchSizeWithLongColumn: "true"     # Optimize LONG column fetching
-        oracle.net.keepAlive: "true"                       # Enable TCP keepalive for connection stability
+
+        # Connection Stability
+        oracle.net.keepAlive: "true"                       # TCP keepalive enabled
+        oracle.net.disableOob: "true"                      # Disable out-of-band breaks
+        oracle.net.OUTBOUND_CONNECT_TIMEOUT: "30000"       # Outbound connection timeout (30s)
 
   log:
     level: INFO

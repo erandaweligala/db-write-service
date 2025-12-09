@@ -9,13 +9,7 @@ quarkus:
     reactive:
       url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
 
-      # Database Configuration
-      #  datasource:
-      #    db-kind: oracle
-      #    username: system
-      #    password: admin
-      #    reactive:
-      #      url: oracle:thin:@localhost:1521/freepdb1
+      # Connection Pool Configuration (Dev settings - lower than production)
       max-size: 20
       event-loop-size: 8
       idle-timeout: PT15M
@@ -25,14 +19,30 @@ quarkus:
       reconnect-interval: PT2S
       shared: false
       name: oracle-pool
+
+      # Vert.x/Quarkus Level Connection Timeout (CRITICAL - controls initial connection)
+      connect-timeout: PT30S     # 30s timeout for connection establishment at Vert.x level
+
+      # Oracle JDBC Driver Properties
       additional-properties:
+        # Statement Caching
         oracle.jdbc.implicitStatementCacheSize: "250"
-        oracle.jdbc.ReadTimeout: "60000"                   # Increased to 60s for high CPU/load scenarios
-        oracle.net.CONNECT_TIMEOUT: "30000"                # Increased to 30s for connection establishment
-        oracle.net.READ_TIMEOUT: "60000"                   # Socket-level read timeout (60s)
+
+        # Connection Timeout Settings (Oracle JDBC 23.x)
+        oracle.jdbc.ReadTimeout: "60000"                   # Read timeout in ms (60s)
+        oracle.net.CONNECT_TIMEOUT: "30000"                # JDBC connection timeout in ms (30s)
+        oracle.net.READ_TIMEOUT: "60000"                   # Socket read timeout in ms (60s)
+        oracle.net.TCP_CONNTIMEOUT_STR: "30000"            # TCP connection timeout in ms (30s)
+        oracle.net.ns.SOCKET_CONNECT_TIMEOUT: "30000"      # Socket connect timeout in ms (30s)
         oracle.jdbc.loginTimeout: "60"                     # Login timeout in seconds
+
+        # Performance Optimization
         oracle.jdbc.defaultRowPrefetch: "100"
-        oracle.net.keepAlive: "true"                       # Enable TCP keepalive for connection stability
+
+        # Connection Stability
+        oracle.net.keepAlive: "true"                       # TCP keepalive enabled
+        oracle.net.disableOob: "true"                      # Disable out-of-band breaks
+        oracle.net.OUTBOUND_CONNECT_TIMEOUT: "30000"       # Outbound connection timeout (30s)
 
   log:
     level: INFO
