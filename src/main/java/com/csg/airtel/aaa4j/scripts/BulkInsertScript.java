@@ -148,7 +148,7 @@ public class BulkInsertScript {
                                 log.errorf(e, "Batch %d failed: %s", batchIndex, e.getMessage());
                             })
                             .onFailure().recoverWithItem(0);
-                }, CONCURRENT_BATCHES)
+                }, CONCURRENT_BATCHES) //todo Expected 1 argument but found 2
                 .collect().asList()
                 .map(results -> {
                     Duration totalDuration = Duration.between(startTime, Instant.now());
@@ -398,7 +398,7 @@ public class BulkInsertScript {
                         String userName = generateUniqueUserName(recordId);
                         String requestId = generateUniqueRequestId(recordId);
                         String macAddress = generateUniqueMacAddress(recordId);
-
+                        //todo Cannot resolve method 'of(int, String, String, String, String, int, String, String, String, LocalDateTime, int, int, String, String, int, String, String, String, String, String, String, String, String, String, int, String, LocalDateTime, String, int, String, String)'
                         tuples.add(Tuple.of(
                                 recordId,                                                          // USER_ID
                                 BANDWIDTHS[random.nextInt(BANDWIDTHS.length)],                    // BANDWIDTH
