@@ -99,6 +99,7 @@ public class BulkInsertScript {
      * @param batchSize Number of records per batch
      * @return Uni containing the result summary
      */
+    //todo need impment after insert  data write csv file and chap password  convert before md5 value add file
     public Uni<BulkInsertResult> executeBulkInsert(String tableName, int totalRecords, int batchSize) {
         log.infof("Starting bulk insert: table=%s, totalRecords=%d, batchSize=%d",
                 tableName, totalRecords, batchSize);
@@ -287,6 +288,7 @@ public class BulkInsertScript {
     /**
      * Generate PASSWORD based on distribution: MAC=30%, PAP=30%, CHAP=40%
      */
+
     private String generatePassword(String macAddress) {
         int choice = random.nextInt(100);
         if (choice < 30) {
@@ -297,6 +299,7 @@ public class BulkInsertScript {
             return "PAP:" + UUID.randomUUID().toString().substring(0, 12);
         } else {
             // 40% CHAP (Challenge-Handshake Authentication Protocol)
+            //todo need to implement hash md5 only chap
             return "CHAP:" + UUID.randomUUID().toString().substring(0, 16);
         }
     }
