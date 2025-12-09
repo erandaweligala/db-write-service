@@ -208,38 +208,38 @@ public class BulkInsertScript {
             String requestId = generateUniqueRequestId(recordId);
             String macAddress = generateUniqueMacAddress(recordId);
 
-            // Generate data for each record
-            values.add(recordId);                                                          // USER_ID (primary key)
+            // Generate data for each record (matching production Oracle schema types)
+            values.add(String.format("USR%08d", recordId));                               // USER_ID (VARCHAR2 primary key)
             values.add(BANDWIDTHS[random.nextInt(BANDWIDTHS.length)]);                    // BANDWIDTH
-            values.add("3");              // BILLING
+            values.add("3");                                                               // BILLING
             values.add("BA-" + String.format("%010d", recordId));                         // BILLING_ACCOUNT_REF
             values.add("CKT-" + String.format("%08d", random.nextInt(100000000)));        // CIRCUIT_ID
-            values.add(random.nextInt(10) + 1);                                           // CONCURRENCY (1-10)
+            values.add(random.nextInt(10) + 1);                                           // CONCURRENCY (NUMBER)
             values.add(userName.toLowerCase() + "@telco.com");                            // CONTACT_EMAIL
             values.add(generateContactName(recordId));                                     // CONTACT_NAME
             values.add(generatePhoneNumber());                                             // CONTACT_NUMBER
-            values.add(LocalDateTime.now());                                               // CREATED_DATE
-            values.add(random.nextInt(3600) + 60);                                        // CUSTOM_TIMEOUT (60-3660 seconds)
-            values.add(8);                                           // CYCLE_DATE (1-28)
-            values.add(ENCRYPTION_METHODS[random.nextInt(ENCRYPTION_METHODS.length)]);    // ENCRYPTION_METHOD
+            values.add(LocalDateTime.now());                                               // CREATED_DATE (TIMESTAMP NOT NULL)
+            values.add(String.valueOf(random.nextInt(3600) + 60));                        // CUSTOM_TIMEOUT (VARCHAR2)
+            values.add(8);                                                                 // CYCLE_DATE (NUMBER)
+            values.add(random.nextInt(5));                                                // ENCRYPTION_METHOD (NUMBER: 0-4)
             values.add("GRP-" + String.format("%05d", random.nextInt(10000)));            // GROUP_ID
-            values.add(random.nextInt(1800) + 300);                                       // IDLE_TIMEOUT (300-2100 seconds)
+            values.add(String.valueOf(random.nextInt(1800) + 300));                       // IDLE_TIMEOUT (VARCHAR2)
             values.add(generateIPAllocation());                                            // IP_ALLOCATION
             values.add(IP_POOL_NAMES[random.nextInt(IP_POOL_NAMES.length)]);              // IP_POOL_NAME
             values.add(generateIPv4());                                                    // IPV4
             values.add(generateIPv6());                                                    // IPV6
-            values.add(macAddress);                                                        // MAC_ADDRESS (unique)
-            values.add(NAS_PORT_TYPES[random.nextInt(NAS_PORT_TYPES.length)]);            // NAS_PORT_TYPE
-            values.add(generatePassword(macAddress));                                      // PASSWORD (30% MAC, 30% PAP, 40% CHAP)
+            values.add(macAddress);                                                        // MAC_ADDRESS
+            values.add(NAS_PORT_TYPES[random.nextInt(NAS_PORT_TYPES.length)]);            // NAS_PORT_TYPE (NOT NULL)
+            values.add(generatePassword(macAddress));                                      // PASSWORD
             values.add("REM-" + UUID.randomUUID().toString().substring(0, 8));            // REMOTE_ID
-            values.add(requestId);                                                         // REQUEST_ID (unique key)
-            values.add(random.nextInt(86400) + 3600);                                     // SESSION_TIMEOUT (3600-90000 seconds)
-            values.add(STATUSES[random.nextInt(STATUSES.length)]);                        // STATUS (ACTIVE, SUSPENDED, INACTIVE)
-            values.add(LocalDateTime.now());                                               // UPDATED_DATE
-            values.add(userName);                                                          // USER_NAME (unique key)
-            values.add(random.nextInt(4094) + 1);                                         // VLAN_ID (1-4094)
+            values.add(requestId);                                                         // REQUEST_ID (NOT NULL)
+            values.add(String.valueOf(random.nextInt(86400) + 3600));                     // SESSION_TIMEOUT (VARCHAR2)
+            values.add(STATUSES[random.nextInt(STATUSES.length)]);                        // STATUS (NOT NULL)
+            values.add(LocalDateTime.now());                                               // UPDATED_DATE (TIMESTAMP)
+            values.add(userName);                                                          // USER_NAME (NOT NULL)
+            values.add(String.valueOf(random.nextInt(4094) + 1));                         // VLAN_ID (VARCHAR2)
             values.add(generateNasIpAddress());                                            // NAS_IP_ADDRESS
-            values.add(SUBSCRIPTIONS[random.nextInt(SUBSCRIPTIONS.length)]);              // SUBSCRIPTION (PREPAID, POSTPAID, HYBRID)
+            values.add(SUBSCRIPTIONS[random.nextInt(SUBSCRIPTIONS.length)]);              // SUBSCRIPTION
         }
 
         sql.append("SELECT * FROM DUAL");
@@ -408,36 +408,37 @@ public class BulkInsertScript {
                         String requestId = generateUniqueRequestId(recordId);
                         String macAddress = generateUniqueMacAddress(recordId);
 
+                        // Generate data matching production Oracle schema types
                         List<Object> values = new ArrayList<>(31);
-                        values.add(recordId);                                                      // USER_ID
+                        values.add(String.format("USR%08d", recordId));                           // USER_ID (VARCHAR2)
                         values.add(BANDWIDTHS[random.nextInt(BANDWIDTHS.length)]);                // BANDWIDTH
-                        values.add("3");        // BILLING
+                        values.add("3");                                                           // BILLING
                         values.add("BA-" + String.format("%010d", recordId));                     // BILLING_ACCOUNT_REF
                         values.add("CKT-" + String.format("%08d", random.nextInt(100000000)));    // CIRCUIT_ID
-                        values.add(random.nextInt(10) + 1);                                       // CONCURRENCY
+                        values.add(random.nextInt(10) + 1);                                       // CONCURRENCY (NUMBER)
                         values.add(userName.toLowerCase() + "@telco.com");                        // CONTACT_EMAIL
                         values.add(generateContactName(recordId));                                 // CONTACT_NAME
                         values.add(generatePhoneNumber());                                         // CONTACT_NUMBER
-                        values.add(LocalDateTime.now());                                           // CREATED_DATE
-                        values.add(random.nextInt(3600) + 60);                                    // CUSTOM_TIMEOUT
-                        values.add(8);                                       // CYCLE_DATE
-                        values.add(ENCRYPTION_METHODS[random.nextInt(ENCRYPTION_METHODS.length)]); // ENCRYPTION_METHOD
+                        values.add(LocalDateTime.now());                                           // CREATED_DATE (TIMESTAMP NOT NULL)
+                        values.add(String.valueOf(random.nextInt(3600) + 60));                    // CUSTOM_TIMEOUT (VARCHAR2)
+                        values.add(8);                                                             // CYCLE_DATE (NUMBER)
+                        values.add(random.nextInt(5));                                            // ENCRYPTION_METHOD (NUMBER: 0-4)
                         values.add("GRP-" + String.format("%05d", random.nextInt(10000)));        // GROUP_ID
-                        values.add(random.nextInt(1800) + 300);                                   // IDLE_TIMEOUT
+                        values.add(String.valueOf(random.nextInt(1800) + 300));                   // IDLE_TIMEOUT (VARCHAR2)
                         values.add(generateIPAllocation());                                        // IP_ALLOCATION
                         values.add(IP_POOL_NAMES[random.nextInt(IP_POOL_NAMES.length)]);          // IP_POOL_NAME
                         values.add(generateIPv4());                                                // IPV4
                         values.add(generateIPv6());                                                // IPV6
                         values.add(macAddress);                                                    // MAC_ADDRESS
-                        values.add(NAS_PORT_TYPES[random.nextInt(NAS_PORT_TYPES.length)]);        // NAS_PORT_TYPE
+                        values.add(NAS_PORT_TYPES[random.nextInt(NAS_PORT_TYPES.length)]);        // NAS_PORT_TYPE (NOT NULL)
                         values.add(generatePassword(macAddress));                                  // PASSWORD
                         values.add("REM-" + UUID.randomUUID().toString().substring(0, 8));        // REMOTE_ID
-                        values.add(requestId);                                                     // REQUEST_ID
-                        values.add(random.nextInt(86400) + 3600);                                 // SESSION_TIMEOUT
-                        values.add(STATUSES[random.nextInt(STATUSES.length)]);                    // STATUS
-                        values.add(LocalDateTime.now());                                           // UPDATED_DATE
-                        values.add(userName);                                                      // USER_NAME
-                        values.add(random.nextInt(4094) + 1);                                     // VLAN_ID
+                        values.add(requestId);                                                     // REQUEST_ID (NOT NULL)
+                        values.add(String.valueOf(random.nextInt(86400) + 3600));                 // SESSION_TIMEOUT (VARCHAR2)
+                        values.add(STATUSES[random.nextInt(STATUSES.length)]);                    // STATUS (NOT NULL)
+                        values.add(LocalDateTime.now());                                           // UPDATED_DATE (TIMESTAMP)
+                        values.add(userName);                                                      // USER_NAME (NOT NULL)
+                        values.add(String.valueOf(random.nextInt(4094) + 1));                     // VLAN_ID (VARCHAR2)
                         values.add(generateNasIpAddress());                                        // NAS_IP_ADDRESS
                         values.add(SUBSCRIPTIONS[random.nextInt(SUBSCRIPTIONS.length)]);          // SUBSCRIPTION
 
@@ -517,49 +518,50 @@ public class BulkInsertScript {
 
     /**
      * Create the target table if it doesn't exist
-     * Schema includes all USER fields with proper constraints:
-     * - USER_ID: Primary Key
-     * - USER_NAME: Unique Key
-     * - REQUEST_ID: Unique Key
-     * - MAC_ADDRESS: Unique
-     * - STATUS: CHECK constraint (ACTIVE, SUSPENDED, INACTIVE)
-     * - SUBSCRIPTION: CHECK constraint (PREPAID, POSTPAID, HYBRID)
+     * Schema includes all USER fields matching production Oracle schema:
+     * - USER_ID: VARCHAR2(50 CHAR) NOT NULL (Primary Key)
+     * - USER_NAME: VARCHAR2(255 CHAR) NOT NULL
+     * - REQUEST_ID: VARCHAR2(255 CHAR) NOT NULL
+     * - NAS_PORT_TYPE: VARCHAR2(255 CHAR) NOT NULL
+     * - STATUS: VARCHAR2(255 CHAR) NOT NULL
+     * - CREATED_DATE: TIMESTAMP(6) NOT NULL
      */
     public Uni<Void> createTableIfNotExists(String tableName) {
         String createTableSql = String.format("""
                 BEGIN
                     EXECUTE IMMEDIATE 'CREATE TABLE %s (
-                        USER_ID NUMBER PRIMARY KEY,
-                        BANDWIDTH VARCHAR2(50),
-                        BILLING VARCHAR2(50),
-                        BILLING_ACCOUNT_REF VARCHAR2(100),
-                        CIRCUIT_ID VARCHAR2(50),
-                        CONCURRENCY NUMBER(5),
-                        CONTACT_EMAIL VARCHAR2(255),
-                        CONTACT_NAME VARCHAR2(200),
-                        CONTACT_NUMBER VARCHAR2(50),
-                        CREATED_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        CUSTOM_TIMEOUT NUMBER(10),
-                        CYCLE_DATE NUMBER(2),
-                        ENCRYPTION_METHOD VARCHAR2(50),
-                        GROUP_ID VARCHAR2(50),
-                        IDLE_TIMEOUT NUMBER(10),
-                        IP_ALLOCATION VARCHAR2(50),
-                        IP_POOL_NAME VARCHAR2(100),
-                        IPV4 VARCHAR2(15),
-                        IPV6 VARCHAR2(45),
-                        MAC_ADDRESS VARCHAR2(17) UNIQUE,
-                        NAS_PORT_TYPE VARCHAR2(50),
-                        PASSWORD VARCHAR2(255),
-                        REMOTE_ID VARCHAR2(100),
-                        REQUEST_ID VARCHAR2(50) UNIQUE,
-                        SESSION_TIMEOUT NUMBER(10),
-                        STATUS VARCHAR2(20) CHECK (STATUS IN (''ACTIVE'', ''SUSPENDED'', ''INACTIVE'')),
-                        UPDATED_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        USER_NAME VARCHAR2(100) UNIQUE NOT NULL,
-                        VLAN_ID NUMBER(5),
-                        NAS_IP_ADDRESS VARCHAR2(15),
-                        SUBSCRIPTION VARCHAR2(20) CHECK (SUBSCRIPTION IN (''PREPAID'', ''POSTPAID'', ''HYBRID''))
+                        USER_ID VARCHAR2(50 CHAR) NOT NULL ENABLE,
+                        BANDWIDTH VARCHAR2(255 CHAR),
+                        BILLING VARCHAR2(255 CHAR),
+                        BILLING_ACCOUNT_REF VARCHAR2(255 CHAR),
+                        CIRCUIT_ID VARCHAR2(255 CHAR),
+                        CONCURRENCY NUMBER(10,0),
+                        CONTACT_EMAIL VARCHAR2(255 CHAR),
+                        CONTACT_NAME VARCHAR2(255 CHAR),
+                        CONTACT_NUMBER VARCHAR2(255 CHAR),
+                        CREATED_DATE TIMESTAMP(6) NOT NULL ENABLE,
+                        CUSTOM_TIMEOUT VARCHAR2(255 CHAR),
+                        CYCLE_DATE NUMBER(10,0),
+                        ENCRYPTION_METHOD NUMBER(10,0),
+                        GROUP_ID VARCHAR2(255 CHAR),
+                        IDLE_TIMEOUT VARCHAR2(255 CHAR),
+                        IP_ALLOCATION VARCHAR2(255 CHAR),
+                        IP_POOL_NAME VARCHAR2(255 CHAR),
+                        IPV4 VARCHAR2(255 CHAR),
+                        IPV6 VARCHAR2(255 CHAR),
+                        MAC_ADDRESS VARCHAR2(255 CHAR),
+                        NAS_PORT_TYPE VARCHAR2(255 CHAR) NOT NULL ENABLE,
+                        PASSWORD VARCHAR2(255 CHAR),
+                        REMOTE_ID VARCHAR2(255 CHAR),
+                        REQUEST_ID VARCHAR2(255 CHAR) NOT NULL ENABLE,
+                        SESSION_TIMEOUT VARCHAR2(255 CHAR),
+                        STATUS VARCHAR2(255 CHAR) NOT NULL ENABLE,
+                        UPDATED_DATE TIMESTAMP(6),
+                        USER_NAME VARCHAR2(255 CHAR) NOT NULL ENABLE,
+                        VLAN_ID VARCHAR2(255 CHAR),
+                        NAS_IP_ADDRESS VARCHAR2(100),
+                        SUBSCRIPTION VARCHAR2(255 CHAR),
+                        CONSTRAINT PK_%s PRIMARY KEY (USER_ID)
                     )';
                 EXCEPTION
                     WHEN OTHERS THEN
@@ -567,7 +569,7 @@ public class BulkInsertScript {
                         ELSE RAISE;
                         END IF;
                 END;
-                """, tableName);
+                """, tableName, tableName);
 
         return client.query(createTableSql)
                 .execute()
