@@ -20,12 +20,15 @@ quarkus:
       name: oracle-pool
       additional-properties:
         oracle.jdbc.implicitStatementCacheSize: "500"      # Increased from 250
-        oracle.jdbc.ReadTimeout: "15000"                   # Reduced from 30000 for faster failure detection
-        oracle.net.CONNECT_TIMEOUT: "3000"                 # Reduced from 5000
+        oracle.jdbc.ReadTimeout: "60000"                   # Increased to 60s for high CPU/load scenarios
+        oracle.net.CONNECT_TIMEOUT: "30000"                # Increased to 30s for connection establishment
+        oracle.net.READ_TIMEOUT: "60000"                   # Socket-level read timeout (60s)
+        oracle.jdbc.loginTimeout: "60"                     # Login timeout in seconds
         oracle.jdbc.defaultRowPrefetch: "200"              # Increased from 100 for batch operations
         oracle.jdbc.maxCachedBufferSize: "50"              # Added for LOB handling
         oracle.net.disableOob: "true"                      # Disable out-of-band breaks for performance
         oracle.jdbc.useFetchSizeWithLongColumn: "true"     # Optimize LONG column fetching
+        oracle.net.keepAlive: "true"                       # Enable TCP keepalive for connection stability
 
   log:
     level: INFO
