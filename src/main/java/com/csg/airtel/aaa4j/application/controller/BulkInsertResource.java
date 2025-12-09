@@ -1,7 +1,9 @@
 package com.csg.airtel.aaa4j.application.controller;
 
+import com.csg.airtel.aaa4j.infrastructure.CsvExportUtil.CsvExportResult;
 import com.csg.airtel.aaa4j.scripts.BulkInsertScript;
 import com.csg.airtel.aaa4j.scripts.BulkInsertScript.BulkInsertResult;
+import com.csg.airtel.aaa4j.scripts.BulkInsertScript.BulkInsertWithExportResult;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -211,6 +213,65 @@ public class BulkInsertResource {
                 });
     }
 
+    /**
+     * Export existing data to CSV file with MD5 hashed CHAP passwords.
+     *
+     * GET /api/bulk-insert/export?tableName=MY_TABLE&outputDir=/tmp/exports
+     *
+     * CHAP passwords (those starting with "CHAP:") will have their values
+     * hashed using MD5 before being written to the CSV file.
+     * MAC and PAP passwords remain unchanged.
+     */
+    @GET
+    @Path("/export")
+    public Uni<Response> exportToCsv(
+            @QueryParam("tableName") @DefaultValue(DEFAULT_TABLE) String tableName,
+            @QueryParam("outputDir") String outputDir) {
+        log.infof("Starting CSV export: table=%s, outputDir=%s", tableName, outputDir);
+
+        return bulkInsertScript.exportToCsv(tableName, outputDir)
+                .map(result -> Response.ok(toExportResponse(result)).build())
+                .onFailure().recoverWithItem(e -> {
+                    log.errorf(e, "CSV export failed");
+                    return Response.serverError()
+                            .entity(Map.of("error", e.getMessage()))
+                            .build();
+                });
+    }
+
+    /**
+     * Execute bulk insert and then export data to CSV file.
+     * CHAP passwords are hashed with MD5 in the exported CSV.
+     *
+     * POST /api/bulk-insert/with-export
+     * Body: {
+     *   "tableName": "MY_TABLE",
+     *   "totalRecords": 100000,
+     *   "batchSize": 1000,
+     *   "outputDir": "/tmp/exports"
+     * }
+     */
+    @POST
+    @Path("/with-export")
+    public Uni<Response> executeBulkInsertWithExport(BulkInsertWithExportRequest request) {
+        String tableName = request.tableName() != null ? request.tableName() : DEFAULT_TABLE;
+        int totalRecords = request.totalRecords() > 0 ? request.totalRecords() : 1_000_000;
+        int batchSize = request.batchSize() > 0 ? request.batchSize() : 1000;
+        String outputDir = request.outputDir();
+
+        log.infof("Starting bulk insert with CSV export: table=%s, records=%d, batchSize=%d, outputDir=%s",
+                tableName, totalRecords, batchSize, outputDir);
+
+        return bulkInsertScript.executeBulkInsertWithCsvExport(tableName, totalRecords, batchSize, outputDir)
+                .map(result -> Response.ok(toCombinedResponse(result)).build())
+                .onFailure().recoverWithItem(e -> {
+                    log.errorf(e, "Bulk insert with export failed");
+                    return Response.serverError()
+                            .entity(Map.of("error", e.getMessage()))
+                            .build();
+                });
+    }
+
     private Map<String, Object> toResponse(BulkInsertResult result) {
         return Map.of(
                 "tableName", result.tableName(),
@@ -237,6 +298,22 @@ public class BulkInsertResource {
         }
     }
 
+    private Map<String, Object> toExportResponse(CsvExportResult result) {
+        return Map.of(
+                "filePath", result.filePath(),
+                "recordCount", result.recordCount(),
+                "durationMs", result.durationMs(),
+                "recordsPerSecond", Math.round(result.recordsPerSecond())
+        );
+    }
+
+    private Map<String, Object> toCombinedResponse(BulkInsertWithExportResult result) {
+        return Map.of(
+                "insert", toResponse(result.insertResult()),
+                "export", toExportResponse(result.exportResult())
+        );
+    }
+
     // Request DTOs
     public record BulkInsertRequest(String tableName) {}
 
@@ -245,5 +322,12 @@ public class BulkInsertResource {
             int totalRecords,
             int batchSize,
             boolean useSingleRowInsert
+    ) {}
+
+    public record BulkInsertWithExportRequest(
+            String tableName,
+            int totalRecords,
+            int batchSize,
+            String outputDir
     ) {}
 }
