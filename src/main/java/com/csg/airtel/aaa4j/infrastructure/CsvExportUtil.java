@@ -226,10 +226,9 @@ public class CsvExportUtil {
         sb.append(escapeCSV(getString(row, "IPV4"))).append(",");
         // IPV6
         sb.append(escapeCSV(getString(row, "IPV6"))).append(",");
-        // MAC_ADDRESS
-
-        //todo mac address need to be with colun (:)
-        sb.append(escapeCSV(getString(row, "MAC_ADDRESS"))).append(",");
+        // MAC_ADDRESS (formatted with colons)
+        String macAddress = getString(row, "MAC_ADDRESS");
+        sb.append(escapeCSV(formatMacAddress(macAddress))).append(",");
         // NAS_PORT_TYPE
         sb.append(escapeCSV(getString(row, "NAS_PORT_TYPE"))).append(",");
         // PASSWORD - Hash CHAP passwords with MD5
@@ -268,6 +267,33 @@ public class CsvExportUtil {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    /**
+     * Format MAC address with colons.
+     * Converts "001122334455" to "00:11:22:33:44:55"
+     */
+    private String formatMacAddress(String macAddress) {
+        if (macAddress == null || macAddress.isEmpty()) {
+            return "";
+        }
+
+        // Remove any existing colons or separators
+        String cleanMac = macAddress.replace(":", "").replace("-", "").replace(".", "");
+
+        // MAC address should be 12 hex characters
+        if (cleanMac.length() != 12) {
+            return macAddress; // Return as-is if invalid format
+        }
+
+        // Format as XX:XX:XX:XX:XX:XX
+        return String.format("%s:%s:%s:%s:%s:%s",
+                cleanMac.substring(0, 2),
+                cleanMac.substring(2, 4),
+                cleanMac.substring(4, 6),
+                cleanMac.substring(6, 8),
+                cleanMac.substring(8, 10),
+                cleanMac.substring(10, 12));
     }
 
     /**
