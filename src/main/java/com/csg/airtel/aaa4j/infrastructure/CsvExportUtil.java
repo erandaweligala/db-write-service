@@ -61,8 +61,6 @@ public class CsvExportUtil {
      * @param outputDir The directory to write the CSV file (null for temp directory)
      * @return Uni containing the result with file path and record count
      */
-
-    // todo need to export Data from DB
     public Uni<CsvExportResult> exportToCsv(String tableName, String outputDir) {
         String timestamp = LocalDateTime.now().format(DATE_FORMATTER);
         String fileName = String.format("%s_export_%s.csv", tableName, timestamp);
