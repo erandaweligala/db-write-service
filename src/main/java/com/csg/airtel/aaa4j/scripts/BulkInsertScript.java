@@ -232,7 +232,7 @@ public class BulkInsertScript {
             values.add(IP_POOL_NAMES[random.nextInt(IP_POOL_NAMES.length)]);              // IP_POOL_NAME
             values.add(generateIPv4());                                                    // IPV4
             values.add(generateIPv6());                                                    // IPV6
-            values.add(macAddress.replace(":", ""));                                                        // MAC_ADDRESS (unique)
+            values.add(macAddress.replace(":", ""));                                       // MAC_ADDRESS (unique, stored without colons)
             values.add(NAS_PORT_TYPES[random.nextInt(NAS_PORT_TYPES.length)]);            // NAS_PORT_TYPE
             values.add(generatePassword(macAddress,i));                                      // PASSWORD (30% MAC, 30% PAP, 40% CHAP)
             values.add("REM-" + UUID.randomUUID().toString().substring(0, 8));            // REMOTE_ID
