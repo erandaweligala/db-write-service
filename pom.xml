@@ -15,6 +15,16 @@
     <compiler-plugin.version>3.14.0</compiler-plugin.version>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
+      <sonar.java.coveragePlugin>jacoco</sonar.java.coveragePlugin>
+      <sonar.dynamicAnalysis>reuseReports</sonar.dynamicAnalysis>
+      <sonar.coverage.jacoco.xmlReportPaths>${project.basedir}/target/site/jacoco/jacoco.xml
+      </sonar.coverage.jacoco.xmlReportPaths>
+      <sonar.language>java</sonar.language>
+      <sonar.exclusions>
+          src/main/java/**/application/**/*.java,
+          src/main/java/**/domain/model/cdr/*.java,
+          src/main/java/**/domain/service/AccountingUtil.java,
+      </sonar.exclusions>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -84,6 +94,16 @@
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-smallrye-health</artifactId>
     </dependency>
+      <dependency>
+          <groupId>io.quarkus</groupId>
+          <artifactId>quarkus-junit5-mockito</artifactId>
+          <scope>test</scope>
+      </dependency>
+      <dependency>
+          <groupId>org.mockito</groupId>
+          <artifactId>mockito-core</artifactId>
+          <scope>test</scope>
+      </dependency>
   </dependencies>
   <build>
     <plugins>
@@ -139,6 +159,30 @@
           </systemPropertyVariables>
         </configuration>
       </plugin>
+        <plugin>
+            <groupId>org.sonarsource.scanner.maven</groupId>
+            <artifactId>sonar-maven-plugin</artifactId>
+            <version>5.1.0.4751</version>
+        </plugin>
+        <plugin>
+            <groupId>org.jacoco</groupId>
+            <artifactId>jacoco-maven-plugin</artifactId>
+            <version>0.8.12</version>
+            <executions>
+                <execution>
+                    <goals>
+                        <goal>prepare-agent</goal>
+                    </goals>
+                </execution>
+                <execution>
+                    <id>report</id>
+                    <phase>prepare-package</phase>
+                    <goals>
+                        <goal>report</goal>
+                    </goals>
+                </execution>
+            </executions>
+        </plugin>
     </plugins>
   </build>
   <profiles>

@@ -42,7 +42,7 @@ import java.util.Map;
 public class BulkInsertResource {
 
     private static final Logger log = Logger.getLogger(BulkInsertResource.class);
-    private static final String DEFAULT_TABLE = "USER_DATA";
+    private static final String DEFAULT_TABLE = "AAA_USER";
 
     private final BulkInsertScript bulkInsertScript;
 

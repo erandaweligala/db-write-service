@@ -227,6 +227,8 @@ public class CsvExportUtil {
         // IPV6
         sb.append(escapeCSV(getString(row, "IPV6"))).append(",");
         // MAC_ADDRESS
+
+        //todo mac address need to be with colun (:)
         sb.append(escapeCSV(getString(row, "MAC_ADDRESS"))).append(",");
         // NAS_PORT_TYPE
         sb.append(escapeCSV(getString(row, "NAS_PORT_TYPE"))).append(",");

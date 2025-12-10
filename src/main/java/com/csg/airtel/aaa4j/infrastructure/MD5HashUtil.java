@@ -17,7 +17,7 @@ import java.security.NoSuchAlgorithmException;
 public class MD5HashUtil {
 
     private static final Logger log = Logger.getLogger(MD5HashUtil.class);
-    private static final String CHAP_PREFIX = "CHAP:";
+    private static final String CHAP_PREFIX = "CHAP-";
 
     /**
      * Convert a string to its MD5 hash representation.

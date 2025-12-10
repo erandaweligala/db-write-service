@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.scripts;
 
+import com.csg.airtel.aaa4j.infrastructure.MD5HashUtil;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
@@ -69,11 +70,14 @@ public class BulkInsertScript {
     private final Pool client;
     private final CsvExportUtil csvExportUtil;
     private final Random random = new Random();
+    private final MD5HashUtil md5HashUtil;
+
 
     @Inject
-    public BulkInsertScript(Pool client, CsvExportUtil csvExportUtil) {
+    public BulkInsertScript(Pool client, CsvExportUtil csvExportUtil, MD5HashUtil md5HashUtil) {
         this.client = client;
         this.csvExportUtil = csvExportUtil;
+        this.md5HashUtil = md5HashUtil;
     }
 
     /**
@@ -228,9 +232,9 @@ public class BulkInsertScript {
             values.add(IP_POOL_NAMES[random.nextInt(IP_POOL_NAMES.length)]);              // IP_POOL_NAME
             values.add(generateIPv4());                                                    // IPV4
             values.add(generateIPv6());                                                    // IPV6
-            values.add(macAddress);                                                        // MAC_ADDRESS (unique)
+            values.add(macAddress.replace(":", ""));                                                        // MAC_ADDRESS (unique)
             values.add(NAS_PORT_TYPES[random.nextInt(NAS_PORT_TYPES.length)]);            // NAS_PORT_TYPE
-            values.add(generatePassword(macAddress));                                      // PASSWORD (30% MAC, 30% PAP, 40% CHAP)
+            values.add(generatePassword(macAddress,i));                                      // PASSWORD (30% MAC, 30% PAP, 40% CHAP)
             values.add("REM-" + UUID.randomUUID().toString().substring(0, 8));            // REMOTE_ID
             values.add(requestId);                                                         // REQUEST_ID (unique key)
             values.add(random.nextInt(86400) + 3600);                                     // SESSION_TIMEOUT (3600-90000 seconds)
@@ -293,18 +297,19 @@ public class BulkInsertScript {
      * Generate PASSWORD based on distribution: MAC=30%, PAP=30%, CHAP=40%
      */
 
-    private String generatePassword(String macAddress) {
+    private String generatePassword(String macAddress , int x) {
         int choice = random.nextInt(100);
         if (choice < 30) {
             // 30% MAC-based password (use MAC address without colons)
-            return "MAC:" + macAddress.replace(":", "");
-        } else if (choice < 60) {
+            return  macAddress.replace(":", "");
+        } else if (choice < 90) {
             // 30% PAP (Password Authentication Protocol)
-            return "PAP:" + UUID.randomUUID().toString().substring(0, 12);
+            return "pap-" + x;
         } else {
             // 40% CHAP (Challenge-Handshake Authentication Protocol)
             // Note: CHAP passwords are hashed with MD5 during CSV export (see CsvExportUtil)
-            return "CHAP:" + UUID.randomUUID().toString().substring(0, 16);
+
+            return md5HashUtil.toMD5("chap-" + x)  ;
         }
     }
 
@@ -370,16 +375,10 @@ public class BulkInsertScript {
         // NAS typically in specific ranges
         return String.format("10.0.%d.%d", random.nextInt(256), random.nextInt(254) + 1);
     }
-
-    /**
-     * Alternative method using single-row inserts with batched execution
-     * This may be more compatible with some Oracle configurations
-     */
     public Uni<BulkInsertResult> executeBulkInsertSingleRow(String tableName, int totalRecords, int batchSize) {
         log.infof("Starting single-row bulk insert: table=%s, totalRecords=%d, batchSize=%d",
                 tableName, totalRecords, batchSize);
 
-        // Reset uniqueness tracking for new bulk insert
         resetUniquenessTracking();
 
         Instant startTime = Instant.now();
@@ -388,11 +387,11 @@ public class BulkInsertScript {
 
         String sql = String.format(
                 "INSERT INTO %s (USER_ID, BANDWIDTH, BILLING, BILLING_ACCOUNT_REF, CIRCUIT_ID, CONCURRENCY, " +
-                "CONTACT_EMAIL, CONTACT_NAME, CONTACT_NUMBER, CREATED_DATE, CUSTOM_TIMEOUT, " +
-                "CYCLE_DATE, ENCRYPTION_METHOD, GROUP_ID, IDLE_TIMEOUT, IP_ALLOCATION, IP_POOL_NAME, " +
-                "IPV4, IPV6, MAC_ADDRESS, NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID, " +
-                "SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, NAS_IP_ADDRESS, SUBSCRIPTION) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "CONTACT_EMAIL, CONTACT_NAME, CONTACT_NUMBER, CREATED_DATE, CUSTOM_TIMEOUT, " +
+                        "CYCLE_DATE, ENCRYPTION_METHOD, GROUP_ID, IDLE_TIMEOUT, IP_ALLOCATION, IP_POOL_NAME, " +
+                        "IPV4, IPV6, MAC_ADDRESS, NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID, " +
+                        "SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, NAS_IP_ADDRESS, SUBSCRIPTION) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 tableName
         );
 
@@ -403,43 +402,43 @@ public class BulkInsertScript {
                     List<Tuple> tuples = new ArrayList<>(batch.size());
 
                     for (Integer index : batch) {
-                        int recordId = index + 1;
+                        int recordId = index + 1300000;
                         String userName = generateUniqueUserName(recordId);
                         String requestId = generateUniqueRequestId(recordId);
                         String macAddress = generateUniqueMacAddress(recordId);
 
                         List<Object> values = new ArrayList<>(31);
-                        values.add(recordId);                                                      // USER_ID
-                        values.add(BANDWIDTHS[random.nextInt(BANDWIDTHS.length)]);                // BANDWIDTH
-                        values.add("3");        // BILLING
-                        values.add("BA-" + String.format("%010d", recordId));                     // BILLING_ACCOUNT_REF
-                        values.add("CKT-" + String.format("%08d", random.nextInt(100000000)));    // CIRCUIT_ID
-                        values.add(random.nextInt(10) + 1);                                       // CONCURRENCY
-                        values.add(userName.toLowerCase() + "@telco.com");                        // CONTACT_EMAIL
-                        values.add(generateContactName(recordId));                                 // CONTACT_NAME
-                        values.add(generatePhoneNumber());                                         // CONTACT_NUMBER
-                        values.add(LocalDateTime.now());                                           // CREATED_DATE
-                        values.add(random.nextInt(3600) + 60);                                    // CUSTOM_TIMEOUT
-                        values.add(8);                                       // CYCLE_DATE
-                        values.add(ENCRYPTION_METHODS[random.nextInt(ENCRYPTION_METHODS.length)]); // ENCRYPTION_METHOD
-                        values.add("GRP-" + String.format("%05d", random.nextInt(10000)));        // GROUP_ID
-                        values.add(random.nextInt(1800) + 300);                                   // IDLE_TIMEOUT
-                        values.add(generateIPAllocation());                                        // IP_ALLOCATION
-                        values.add(IP_POOL_NAMES[random.nextInt(IP_POOL_NAMES.length)]);          // IP_POOL_NAME
-                        values.add(generateIPv4());                                                // IPV4
-                        values.add(generateIPv6());                                                // IPV6
-                        values.add(macAddress);                                                    // MAC_ADDRESS
-                        values.add(NAS_PORT_TYPES[random.nextInt(NAS_PORT_TYPES.length)]);        // NAS_PORT_TYPE
-                        values.add(generatePassword(macAddress));                                  // PASSWORD
-                        values.add("REM-" + UUID.randomUUID().toString().substring(0, 8));        // REMOTE_ID
-                        values.add(requestId);                                                     // REQUEST_ID
-                        values.add(random.nextInt(86400) + 3600);                                 // SESSION_TIMEOUT
-                        values.add(STATUSES[random.nextInt(STATUSES.length)]);                    // STATUS
-                        values.add(LocalDateTime.now());                                           // UPDATED_DATE
-                        values.add(userName);                                                      // USER_NAME
-                        values.add(random.nextInt(4094) + 1);                                     // VLAN_ID
-                        values.add(generateNasIpAddress());                                        // NAS_IP_ADDRESS
-                        values.add(SUBSCRIPTIONS[random.nextInt(SUBSCRIPTIONS.length)]);          // SUBSCRIPTION
+                        values.add(String.valueOf("USR0000"+recordId));
+                        values.add(BANDWIDTHS[random.nextInt(BANDWIDTHS.length)]);
+                        values.add("3");
+                        values.add("BA-" + String.format("%010d", recordId));
+                        values.add("CKT-" + String.format("%08d", random.nextInt(100000000)));
+                        values.add(random.nextInt(10) + 1);
+                        values.add(userName.toLowerCase() + "@telco.com");
+                        values.add(generateContactName(recordId));
+                        values.add(generatePhoneNumber());
+                        values.add(LocalDateTime.now());
+                        values.add(String.valueOf(random.nextInt(3600) + 60));
+                        values.add(8);
+                        values.add(1);
+                        values.add("GRP-" + String.format("%05d", random.nextInt(10000)));
+                        values.add(String.valueOf(random.nextInt(1800) + 300));
+                        values.add(generateIPAllocation());
+                        values.add(IP_POOL_NAMES[random.nextInt(IP_POOL_NAMES.length)]);
+                        values.add(generateIPv4());
+                        values.add(generateIPv6());
+                        values.add(macAddress.replace(":", ""));
+                        values.add(NAS_PORT_TYPES[random.nextInt(NAS_PORT_TYPES.length)]);
+                        values.add(generatePassword(macAddress,recordId));
+                        values.add("REM-" + UUID.randomUUID().toString().substring(0, 8));
+                        values.add(requestId);
+                        values.add(String.valueOf(random.nextInt(86400) + 3600));
+                        values.add(STATUSES[random.nextInt(STATUSES.length)]);
+                        values.add(LocalDateTime.now());
+                        values.add(userName);
+                        values.add(String.valueOf(random.nextInt(4094) + 1));
+                        values.add(generateNasIpAddress());
+                        values.add(SUBSCRIPTIONS[random.nextInt(SUBSCRIPTIONS.length)]);
 
                         tuples.add(Tuple.from(values));
                     }
@@ -479,6 +478,115 @@ public class BulkInsertScript {
                     );
                 });
     }
+
+    /**
+     * Alternative method using single-row inserts with batched execution
+     * This may be more compatible with some Oracle configurations
+     */
+//    public Uni<BulkInsertResult> executeBulkInsertSingleRow(String tableName, int totalRecords, int batchSize) {
+//        log.infof("Starting single-row bulk insert: table=%s, totalRecords=%d, batchSize=%d",
+//                tableName, totalRecords, batchSize);
+//
+//        // Reset uniqueness tracking for new bulk insert
+//        resetUniquenessTracking();
+//
+//        Instant startTime = Instant.now();
+//        AtomicInteger insertedCount = new AtomicInteger(0);
+//        AtomicInteger failedCount = new AtomicInteger(0);
+//
+//        String sql = String.format(
+//                "INSERT INTO %s (USER_ID, BANDWIDTH, BILLING, BILLING_ACCOUNT_REF, CIRCUIT_ID, CONCURRENCY, " +
+//                "CONTACT_EMAIL, CONTACT_NAME, CONTACT_NUMBER, CREATED_DATE, CUSTOM_TIMEOUT, " +
+//                "CYCLE_DATE, ENCRYPTION_METHOD, GROUP_ID, IDLE_TIMEOUT, IP_ALLOCATION, IP_POOL_NAME, " +
+//                "IPV4, IPV6, MAC_ADDRESS, NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID, " +
+//                "SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, NAS_IP_ADDRESS, SUBSCRIPTION) " +
+//                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+//                tableName
+//        );
+//
+//        return Multi.createFrom().range(0, totalRecords)
+//                .group().intoLists().of(batchSize)
+//                .capDemandsTo(CONCURRENT_BATCHES)
+//                .onItem().transformToUniAndMerge(batch -> {
+//                    List<Tuple> tuples = new ArrayList<>(batch.size());
+//
+//                    for (Integer index : batch) {
+//                        int recordId = index + 1;
+//                        String userName = generateUniqueUserName(recordId);
+//                        String requestId = generateUniqueRequestId(recordId);
+//                        String macAddress = generateUniqueMacAddress(recordId);
+//
+//                        List<Object> values = new ArrayList<>(31);
+//                        values.add(recordId);                                                      // USER_ID
+//                        values.add(BANDWIDTHS[random.nextInt(BANDWIDTHS.length)]);                // BANDWIDTH
+//                        values.add("3");        // BILLING
+//                        values.add("BA-" + String.format("%010d", recordId));                     // BILLING_ACCOUNT_REF
+//                        values.add("CKT-" + String.format("%08d", random.nextInt(100000000)));    // CIRCUIT_ID
+//                        values.add(random.nextInt(10) + 1);                                       // CONCURRENCY
+//                        values.add(userName.toLowerCase() + "@telco.com");                        // CONTACT_EMAIL
+//                        values.add(generateContactName(recordId));                                 // CONTACT_NAME
+//                        values.add(generatePhoneNumber());                                         // CONTACT_NUMBER
+//                        values.add(LocalDateTime.now());                                           // CREATED_DATE
+//                        values.add(random.nextInt(3600) + 60);                                    // CUSTOM_TIMEOUT
+//                        values.add(8);                                       // CYCLE_DATE
+//                        values.add(ENCRYPTION_METHODS[random.nextInt(ENCRYPTION_METHODS.length)]); // ENCRYPTION_METHOD
+//                        values.add("GRP-" + String.format("%05d", random.nextInt(10000)));        // GROUP_ID
+//                        values.add(random.nextInt(1800) + 300);                                   // IDLE_TIMEOUT
+//                        values.add(generateIPAllocation());                                        // IP_ALLOCATION
+//                        values.add(IP_POOL_NAMES[random.nextInt(IP_POOL_NAMES.length)]);          // IP_POOL_NAME
+//                        values.add(generateIPv4());                                                // IPV4
+//                        values.add(generateIPv6());                                                // IPV6
+//                        values.add(macAddress);                                                    // MAC_ADDRESS
+//                        values.add(NAS_PORT_TYPES[random.nextInt(NAS_PORT_TYPES.length)]);        // NAS_PORT_TYPE
+//                        values.add(generatePassword(macAddress));                                  // PASSWORD
+//                        values.add("REM-" + UUID.randomUUID().toString().substring(0, 8));        // REMOTE_ID
+//                        values.add(requestId);                                                     // REQUEST_ID
+//                        values.add(random.nextInt(86400) + 3600);                                 // SESSION_TIMEOUT
+//                        values.add(STATUSES[random.nextInt(STATUSES.length)]);                    // STATUS
+//                        values.add(LocalDateTime.now());                                           // UPDATED_DATE
+//                        values.add(userName);                                                      // USER_NAME
+//                        values.add(random.nextInt(4094) + 1);                                     // VLAN_ID
+//                        values.add(generateNasIpAddress());                                        // NAS_IP_ADDRESS
+//                        values.add(SUBSCRIPTIONS[random.nextInt(SUBSCRIPTIONS.length)]);          // SUBSCRIPTION
+//
+//                        tuples.add(Tuple.from(values));
+//                    }
+//
+//                    return client.preparedQuery(sql)
+//                            .executeBatch(tuples)
+//                            .map(SqlResult::rowCount)
+//                            .onItem().invoke(rowCount -> {
+//                                int total = insertedCount.addAndGet(batch.size());
+//                                if (total % PROGRESS_INTERVAL == 0) {
+//                                    Duration elapsed = Duration.between(startTime, Instant.now());
+//                                    double rps = total * 1000.0 / elapsed.toMillis();
+//                                    log.infof("Progress: %d/%d (%.1f%%) | %.0f rec/s",
+//                                            total, totalRecords, (total * 100.0 / totalRecords), rps);
+//                                }
+//                            })
+//                            .onFailure().invoke(e -> {
+//                                failedCount.addAndGet(batch.size());
+//                                log.errorf(e, "Batch insert failed: %s", e.getMessage());
+//                            })
+//                            .onFailure().recoverWithItem(0);
+//                })
+//                .collect().asList()
+//                .map(results -> {
+//                    Duration totalDuration = Duration.between(startTime, Instant.now());
+//                    int totalInserted = insertedCount.get();
+//                    int totalFailed = failedCount.get();
+//                    double recordsPerSecond = totalInserted * 1000.0 / totalDuration.toMillis();
+//
+//                    return new BulkInsertResult(
+//                            tableName,
+//                            totalRecords,
+//                            totalInserted,
+//                            totalFailed,
+//                            totalDuration,
+//                            recordsPerSecond
+//                    );
+//                });
+//    }
 
     /**
      * Execute bulk insert and then export data to CSV file.

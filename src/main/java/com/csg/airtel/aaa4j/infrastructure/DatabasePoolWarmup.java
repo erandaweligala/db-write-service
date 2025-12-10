@@ -16,7 +16,7 @@ import java.util.List;
  * Pre-creates connections on application startup to avoid cold-start latency
  * Critical for achieving consistent 1000+ TPS from startup
  */
-@ApplicationScoped
+//@ApplicationScoped
 public class DatabasePoolWarmup {
     private static final Logger log = Logger.getLogger(DatabasePoolWarmup.class);
 
@@ -30,7 +30,7 @@ public class DatabasePoolWarmup {
         this.dbClient = dbClient;
     }
 
-    void onStart(@Observes StartupEvent ev) {
+    void onStart(StartupEvent ev) {
         log.info("Starting database connection pool warm-up...");
         long startTime = System.currentTimeMillis();
 
