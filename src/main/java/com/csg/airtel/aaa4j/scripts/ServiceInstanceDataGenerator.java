@@ -354,25 +354,22 @@ public class ServiceInstanceDataGenerator {
     /**
      * Insert a batch of BUCKET_INSTANCE records
      */
-    //todo error for unique constraint (AAA.SYS_C006890) violated
     private Uni<Integer> insertBucketInstanceBatch(List<BucketInstanceRecord> batch) {
         StringBuilder sql = new StringBuilder("INSERT ALL ");
 
-        String columns = "(ID,BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
+        String columns = "(BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
                 "CONSUMPTION_LIMIT, CONSUMPTION_LIMIT_WINDOW, CURRENT_BALANCE, EXPIRATION, " +
                 "INITIAL_BALANCE, MAX_CARRY_FORWARD, PRIORITY, RULE, SERVICE_ID, TIME_WINDOW, " +
                 "TOTAL_CARRY_FORWARD, USAGE, UPDATED_AT, IS_UNLIMITED)";
 
-        String placeholders = "(?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String placeholders = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         List<Object> values = new ArrayList<>();
-
 
         for (BucketInstanceRecord record : batch) {
             sql.append("INTO BUCKET_INSTANCE ").append(columns)
                .append(" VALUES ").append(placeholders).append(" ");
-            AtomicLong serviceIdCounter = new AtomicLong(System.currentTimeMillis() % 1000000);
-            values.add(serviceIdCounter.incrementAndGet());
+
             values.add(record.bucketId);
             values.add(record.bucketType);
             values.add(record.carryForward);
@@ -391,7 +388,6 @@ public class ServiceInstanceDataGenerator {
             values.add(record.usage);
             values.add(record.updatedAt);
             values.add(record.isUnlimited);
-
         }
 
         sql.append("SELECT * FROM DUAL");
