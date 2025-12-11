@@ -38,7 +38,7 @@ public class ServiceInstanceDataGenerator {
 
     // Configuration constants
     private static final int SERVICES_PER_USER = 3;
-    private static final int BATCH_SIZE = 5;
+    private static final int BATCH_SIZE = 400;
     private static final int BUCKET_BATCH_SIZE = 1000; // Larger batch size for bucket inserts
     private static final int PROGRESS_INTERVAL = 500;
     private static final int CONCURRENT_BATCHES = 1;
@@ -92,8 +92,8 @@ public class ServiceInstanceDataGenerator {
     //to
     private Uni<List<String>> fetchUsernames() {
         log.info("Fetching usernames from AAA_USER table...");
-
-        return client.query("SELECT USER_NAME FROM AAA_USER ORDER BY USER_NAME FETCH FIRST 10 ROWS ONLY")
+//SELECT USER_NAME FROM AAA_USER ORDER BY USER_NAME FETCH FIRST 10 ROWS ONLY
+        return client.query("SELECT USER_NAME FROM AAA_USER ORDER BY USER_NAME FETCH FIRST 1000 ROWS ONLY")
                 .execute()
                 .map(rows -> {
                     List<String> usernames = new ArrayList<>();
@@ -296,19 +296,21 @@ public class ServiceInstanceDataGenerator {
     /**
      * Insert BUCKET_INSTANCE records for each SERVICE_INSTANCE
      */
+
+    //todo java.sql.SQLException: ORA-17003: Invalid column index
     private Uni<Integer> insertBucketInstancesForServices(
             List<ServiceInstanceRecord> serviceRecords,
             List<Long> serviceIds) {
 
         List<BucketInstanceRecord> bucketRecords = new ArrayList<>();
-
+        AtomicLong serviceIdCounter = new AtomicLong(System.currentTimeMillis() % 1000000);
         for (int i = 0; i < serviceRecords.size(); i++) {
             long serviceId = serviceIds.get(i);
             // Generate 2-5 bucket instances per service
             int bucketCount = random.nextInt(4) + 2;
 
             for (int j = 0; j < bucketCount; j++) {
-                bucketRecords.add(createBucketInstanceRecord(serviceId, j + 1));
+                bucketRecords.add(createBucketInstanceRecord(serviceId, j + 1,serviceIdCounter.incrementAndGet()));
             }
         }
 
@@ -322,7 +324,7 @@ public class ServiceInstanceDataGenerator {
     /**
      * Create a BUCKET_INSTANCE record with generated data
      */
-    private BucketInstanceRecord createBucketInstanceRecord(long serviceId, int priority) {
+    private BucketInstanceRecord createBucketInstanceRecord(long serviceId, int priority,long id) {
         String bucketId = "BUCKET-" + serviceId + "-" + priority;
         long initialBalance = 10_000_000_000L + random.nextLong(90_000_000_000L); // > 9999999999
 
@@ -332,6 +334,7 @@ public class ServiceInstanceDataGenerator {
         int isUnlimited = random.nextInt(10) < 2 ? 1 : 0; // 20% unlimited
 
         return new BucketInstanceRecord(
+                id,
                 bucketId,                                           // BUCKET_ID
                 BUCKET_TYPES[random.nextInt(BUCKET_TYPES.length)], // BUCKET_TYPE
                 random.nextInt(2),                                  // CARRY_FORWARD (0 or 1)
@@ -421,6 +424,7 @@ public class ServiceInstanceDataGenerator {
             sql.append("INTO BUCKET_INSTANCE ").append(columns)
                .append(" VALUES ").append(placeholders).append(" ");
 
+            values.add(record.id);
             values.add(record.bucketId);
             values.add(record.bucketType);
             values.add(record.carryForward);
@@ -464,6 +468,7 @@ public class ServiceInstanceDataGenerator {
         return Multi.createFrom().iterable(records)
                 .onItem().transformToUniAndConcatenate(record -> {
                     List<Object> values = new ArrayList<>();
+                    values.add(record.id);
                     values.add(record.bucketId);
                     values.add(record.bucketType);
                     values.add(record.carryForward);
@@ -515,6 +520,7 @@ public class ServiceInstanceDataGenerator {
     ) {}
 
     private record BucketInstanceRecord(
+            long id,
             String bucketId,
             String bucketType,
             int carryForward,
