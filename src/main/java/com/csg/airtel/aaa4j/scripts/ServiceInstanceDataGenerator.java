@@ -57,8 +57,9 @@ public class ServiceInstanceDataGenerator {
 
     // BUCKET_INSTANCE constants
     private static final String[] TIME_WINDOWS = {"00-08", "00-24", "00-18", "18-24"};
+    private static final String[] CONSUMTION_LIMIT = {"1", "7", "30"};
     private static final String[] BUCKET_TYPES = {"DATA", "COMBO"};
-    private static final String[] RULES = {"PEAK", "OFF_PEAK", "ANYTIME", "WEEKEND", "SPECIAL"};
+    private static final String[] RULES = {"100Mbps", "200Mbps", "300Kbps", "1Gbps", "100kbps"};
 
     private final Pool client;
     private final Random random = new Random();
@@ -296,8 +297,6 @@ public class ServiceInstanceDataGenerator {
     /**
      * Insert BUCKET_INSTANCE records for each SERVICE_INSTANCE
      */
-
-    //todo java.sql.SQLException: ORA-17003: Invalid column index
     private Uni<Integer> insertBucketInstancesForServices(
             List<ServiceInstanceRecord> serviceRecords,
             List<Long> serviceIds) {
@@ -332,6 +331,9 @@ public class ServiceInstanceDataGenerator {
         LocalDateTime expiration = now.plusDays(random.nextInt(365) + 30);
 
         int isUnlimited = random.nextInt(10) < 2 ? 1 : 0; // 20% unlimited
+        //todo if unlimited = 1 no bucket initialBalance and CURRENT_BALANCE Field should be  Null
+
+
 
         return new BucketInstanceRecord(
                 id,
@@ -340,7 +342,7 @@ public class ServiceInstanceDataGenerator {
                 random.nextInt(2),                                  // CARRY_FORWARD (0 or 1)
                 random.nextInt(90) + 30,                            // CARRY_FORWARD_VALIDITY
                 initialBalance / 10,                                // CONSUMPTION_LIMIT
-                TIME_WINDOWS[random.nextInt(TIME_WINDOWS.length)],  // CONSUMPTION_LIMIT_WINDOW
+                CONSUMTION_LIMIT[random.nextInt(TIME_WINDOWS.length)],  // CONSUMPTION_LIMIT_WINDOW
                 initialBalance - random.nextLong(initialBalance / 10), // CURRENT_BALANCE
                 expiration,                                         // EXPIRATION
                 initialBalance,                                     // INITIAL_BALANCE
@@ -416,7 +418,7 @@ public class ServiceInstanceDataGenerator {
                 "INITIAL_BALANCE, MAX_CARRY_FORWARD, PRIORITY, RULE, SERVICE_ID, TIME_WINDOW, " +
                 "TOTAL_CARRY_FORWARD, USAGE, UPDATED_AT, IS_UNLIMITED)";
 
-        String placeholders = "(DEFAULT, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String placeholders = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         List<Object> values = new ArrayList<>();
 
@@ -463,7 +465,7 @@ public class ServiceInstanceDataGenerator {
                 "CONSUMPTION_LIMIT, CONSUMPTION_LIMIT_WINDOW, CURRENT_BALANCE, EXPIRATION, " +
                 "INITIAL_BALANCE, MAX_CARRY_FORWARD, PRIORITY, RULE, SERVICE_ID, TIME_WINDOW, " +
                 "TOTAL_CARRY_FORWARD, USAGE, UPDATED_AT, IS_UNLIMITED) " +
-                "VALUES (DEFAULT, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         return Multi.createFrom().iterable(records)
                 .onItem().transformToUniAndConcatenate(record -> {
