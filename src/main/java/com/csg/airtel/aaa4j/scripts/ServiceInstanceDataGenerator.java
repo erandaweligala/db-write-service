@@ -37,13 +37,13 @@ public class ServiceInstanceDataGenerator {
     private static final Logger log = Logger.getLogger(ServiceInstanceDataGenerator.class);
     @Inject
      ReactiveRedisDataSource reactiveRedisDataSource;
-    // Configuration constants
+    // Configuration constants - OPTIMIZED FOR HIGH THROUGHPUT
     private static final int SERVICES_PER_USER = 3;
-    private static final int BATCH_SIZE = 1000;
-    private static final int BUCKET_BATCH_SIZE = 2000; // Larger batch size for bucket inserts
-    private static final int PROGRESS_INTERVAL = 500;
-    private static final int CONCURRENT_BATCHES = 1;
-    private static final int BUCKET_CONCURRENT_BATCHES = 1; // Higher concurrency for bucket inserts
+    private static final int BATCH_SIZE = 5000; // Increased from 1000 for better throughput
+    private static final int BUCKET_BATCH_SIZE = 10000; // Increased from 2000 for larger batch inserts
+    private static final int PROGRESS_INTERVAL = 5000; // Less frequent logging
+    private static final int CONCURRENT_BATCHES = 10; // Increased from 1 for parallel processing
+    private static final int BUCKET_CONCURRENT_BATCHES = 20; // Increased from 1 for higher bucket insert concurrency
 
     // SERVICE_INSTANCE constants
     private static final String[] PLAN_IDS = {
@@ -124,7 +124,7 @@ public class ServiceInstanceDataGenerator {
     }
 
     /**
-     * Generate SERVICE_INSTANCE records for all users
+     * Generate SERVICE_INSTANCE records for all users - OPTIMIZED
      */
     private Uni<GenerationResult> generateServiceInstances(List<String> usernames, Instant startTime) {
         AtomicInteger serviceCount = new AtomicInteger(0);
@@ -132,20 +132,19 @@ public class ServiceInstanceDataGenerator {
         AtomicInteger failedCount = new AtomicInteger(0);
         AtomicLong serviceIdCounter = new AtomicLong(System.currentTimeMillis() % 1000000);
 
-        // Create list of service instance records to insert
-        List<ServiceInstanceRecord> serviceRecords = new ArrayList<>();
-        for (String username : usernames) {
-            for (int i = 0; i < SERVICES_PER_USER; i++) {
-                serviceRecords.add(createServiceInstanceRecord(username, serviceIdCounter.incrementAndGet()));
-            }
-        }
-
-        int totalServices = serviceRecords.size();
+        int totalServices = usernames.size() * SERVICES_PER_USER;
         int totalBatches = (totalServices + BATCH_SIZE - 1) / BATCH_SIZE;
 
-        log.infof("Processing %d service instances in %d batches", totalServices, totalBatches);
+        log.infof("Processing %d service instances in %d batches with %d concurrent workers",
+                totalServices, totalBatches, CONCURRENT_BATCHES);
 
-        return Multi.createFrom().iterable(serviceRecords)
+        // Stream processing: generate records on-the-fly instead of pre-creating all
+        return Multi.createFrom().iterable(usernames)
+                .onItem().transformToMulti(username ->
+                    Multi.createFrom().range(0, SERVICES_PER_USER)
+                        .map(i -> createServiceInstanceRecord(username, serviceIdCounter.incrementAndGet()))
+                )
+                .merge()
                 .group().intoLists().of(BATCH_SIZE)
                 .capDemandsTo(CONCURRENT_BATCHES)
                 .onItem().transformToUniAndMerge(batch ->
@@ -260,10 +259,12 @@ public class ServiceInstanceDataGenerator {
     }
 
     /**
-     * Insert a batch of SERVICE_INSTANCE records
+     * Insert a batch of SERVICE_INSTANCE records - OPTIMIZED
+     * Pre-allocates collection sizes for better performance
      */
     private Uni<List<Long>> insertServiceInstanceBatch(List<ServiceInstanceRecord> batch) {
-        StringBuilder sql = new StringBuilder("INSERT ALL ");
+        StringBuilder sql = new StringBuilder(batch.size() * 200); // Pre-allocate approximate size
+        sql.append("INSERT ALL ");
 
         String columns = "(ID, CREATED_AT, EXPIRY_DATE, IS_GROUP, NEXT_CYCLE_START_DATE, " +
                 "PLAN_ID, PLAN_NAME, PLAN_TYPE, RECURRING_FLAG, REQUEST_ID, " +
@@ -272,8 +273,8 @@ public class ServiceInstanceDataGenerator {
 
         String placeholders = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-        List<Object> values = new ArrayList<>();
-        List<Long> serviceIds = new ArrayList<>();
+        List<Object> values = new ArrayList<>(batch.size() * 18); // Pre-allocate exact size
+        List<Long> serviceIds = new ArrayList<>(batch.size());
 
         for (ServiceInstanceRecord record : batch) {
             sql.append("INTO SERVICE_INSTANCE ").append(columns)
@@ -306,33 +307,39 @@ public class ServiceInstanceDataGenerator {
         return client.preparedQuery(sql.toString())
                 .execute(Tuple.from(values))
                 .map(result -> serviceIds)
-                .onFailure().retry().atMost(2);
+                .onFailure().retry().atMost(3);
     }
 
     /**
-     * Insert BUCKET_INSTANCE records for each SERVICE_INSTANCE
+     * Insert BUCKET_INSTANCE records for each SERVICE_INSTANCE - OPTIMIZED
+     * Generates bucket records on-the-fly to reduce memory footprint
      */
     private Uni<Integer> insertBucketInstancesForServices(
             List<ServiceInstanceRecord> serviceRecords,
             List<Long> serviceIds) {
 
-        List<BucketInstanceRecord> bucketRecords = new ArrayList<>();
-        AtomicLong serviceIdCounter = new AtomicLong(System.currentTimeMillis() % 1000000);
-        for (int i = 0; i < serviceRecords.size(); i++) {
-            long serviceId = serviceIds.get(i);
-            // Generate 2-5 bucket instances per service
-            int bucketCount = random.nextInt(3) + 2;
+        AtomicLong bucketIdCounter = new AtomicLong(System.currentTimeMillis() % 1000000);
+        AtomicInteger totalInserted = new AtomicInteger(0);
 
-            for (int j = 0; j < bucketCount; j++) {
-                bucketRecords.add(createBucketInstanceRecord(serviceId, j + 1,serviceIdCounter.incrementAndGet()));
-            }
-        }
+        // Stream-based processing: generate and insert buckets in smaller chunks
+        return Multi.createFrom().range(0, serviceRecords.size())
+                .onItem().transformToMulti(i -> {
+                    long serviceId = serviceIds.get(i);
+                    int bucketCount = random.nextInt(3) + 2; // 2-5 buckets per service
 
-        if (bucketRecords.isEmpty()) {
-            return Uni.createFrom().item(0);
-        }
-
-        return insertBucketInstanceBatch(bucketRecords);
+                    return Multi.createFrom().range(0, bucketCount)
+                        .map(j -> createBucketInstanceRecord(serviceId, j + 1, bucketIdCounter.incrementAndGet()));
+                })
+                .merge()
+                .group().intoLists().of(BUCKET_BATCH_SIZE)
+                .capDemandsTo(BUCKET_CONCURRENT_BATCHES)
+                .onItem().transformToUniAndMerge(chunk ->
+                    insertBucketChunk(chunk)
+                        .onItem().invoke(count -> totalInserted.addAndGet(count))
+                        .onFailure().recoverWithItem(0)
+                )
+                .collect().asList()
+                .map(results -> totalInserted.get());
     }
 
     /**
@@ -387,59 +394,39 @@ public class ServiceInstanceDataGenerator {
         );
     }
 
-    /**
-     * Insert a batch of BUCKET_INSTANCE records using optimized batch processing
-     * Supports large-scale inserts (e.g., 4 million records) by:
-     * - Chunking large batches into manageable sizes (BUCKET_BATCH_SIZE)
-     * - Parallel processing multiple chunks concurrently
-     * - Using INSERT ALL for efficient batch inserts
-     */
-    private Uni<Integer> insertBucketInstanceBatch(List<BucketInstanceRecord> batch) {
-        if (batch.isEmpty()) {
-            return Uni.createFrom().item(0);
-        }
-
-        AtomicInteger totalInserted = new AtomicInteger(0);
-        AtomicInteger processedChunks = new AtomicInteger(0);
-        int totalChunks = (batch.size() + BUCKET_BATCH_SIZE - 1) / BUCKET_BATCH_SIZE;
-
-        // Split into chunks and process in parallel
-        return Multi.createFrom().iterable(batch)
-                .group().intoLists().of(BUCKET_BATCH_SIZE)
-                .capDemandsTo(BUCKET_CONCURRENT_BATCHES)
-                .onItem().transformToUniAndMerge(chunk ->
-                    insertBucketChunk(chunk)
-                        .onItem().invoke(count -> {
-                            totalInserted.addAndGet(count);
-                            int completed = processedChunks.incrementAndGet();
-                            if (completed % 10 == 0 || completed == totalChunks) {
-                                log.infof("Bucket insertion progress: %d/%d chunks (%d records)",
-                                        completed, totalChunks, totalInserted.get());
-                            }
-                        })
-                        .onFailure().invoke(e ->
-                            log.errorf(e, "Failed to insert bucket chunk: %s", e.getMessage())
-                        )
-                        .onFailure().recoverWithItem(0)
-                )
-                .collect().asList()
-                .map(results -> totalInserted.get());
-    }
 
     /**
-     * Insert a single chunk of BUCKET_INSTANCE records using INSERT ALL
-     * Optimized for Oracle with parameterized batch inserts
+     * Insert a single chunk of BUCKET_INSTANCE records using INSERT ALL - OPTIMIZED
+     * Uses batch insert with parallel execution for maximum throughput
      */
     private Uni<Integer> insertBucketChunk(List<BucketInstanceRecord> chunk) {
         if (chunk.isEmpty()) {
             return Uni.createFrom().item(0);
         }
 
-        // For very small chunks (< 5), use individual inserts to avoid overhead
-        if (chunk.size() < 5) {
-            return insertBucketIndividual(chunk);
+        // Optimize chunk size: use INSERT ALL for larger batches, individual inserts for small ones
+        if (chunk.size() <= 100) {
+            return insertBucketBatchDirect(chunk);
         }
 
+        // For very large chunks, split into sub-batches to avoid SQL statement size limits
+        int subBatchSize = Math.min(1000, chunk.size());
+        AtomicInteger totalInserted = new AtomicInteger(0);
+
+        return Multi.createFrom().iterable(chunk)
+                .group().intoLists().of(subBatchSize)
+                .onItem().transformToUniAndConcatenate(subBatch ->
+                    insertBucketBatchDirect(subBatch)
+                        .onItem().invoke(totalInserted::addAndGet)
+                )
+                .collect().asList()
+                .map(results -> totalInserted.get());
+    }
+
+    /**
+     * Direct batch insert using INSERT ALL for BUCKET_INSTANCE
+     */
+    private Uni<Integer> insertBucketBatchDirect(List<BucketInstanceRecord> records) {
         StringBuilder sql = new StringBuilder("INSERT ALL ");
 
         String columns = "(ID, BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
@@ -449,9 +436,9 @@ public class ServiceInstanceDataGenerator {
 
         String placeholders = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-        List<Object> values = new ArrayList<>();
+        List<Object> values = new ArrayList<>(records.size() * 19);
 
-        for (BucketInstanceRecord record : chunk) {
+        for (BucketInstanceRecord record : records) {
             sql.append("INTO BUCKET_INSTANCE ").append(columns)
                .append(" VALUES ").append(placeholders).append(" ");
 
@@ -480,53 +467,10 @@ public class ServiceInstanceDataGenerator {
 
         return client.preparedQuery(sql.toString())
                 .execute(Tuple.from(values))
-                .map(result -> chunk.size())
-                .onFailure().retry().atMost(2);
+                .map(result -> records.size())
+                .onFailure().retry().atMost(3);
     }
 
-    /**
-     * Fallback method for inserting small batches individually
-     * Used for chunks smaller than 5 records to avoid INSERT ALL overhead
-     */
-    private Uni<Integer> insertBucketIndividual(List<BucketInstanceRecord> records) {
-        String sql = "INSERT INTO BUCKET_INSTANCE " +
-                "(ID, BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
-                "CONSUMPTION_LIMIT, CONSUMPTION_LIMIT_WINDOW, CURRENT_BALANCE, EXPIRATION, " +
-                "INITIAL_BALANCE, MAX_CARRY_FORWARD, PRIORITY, RULE, SERVICE_ID, TIME_WINDOW, " +
-                "TOTAL_CARRY_FORWARD, USAGE, UPDATED_AT, IS_UNLIMITED) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        return Multi.createFrom().iterable(records)
-                .onItem().transformToUniAndConcatenate(record -> {
-                    List<Object> values = new ArrayList<>();
-                    values.add(record.id);
-                    values.add(record.bucketId);
-                    values.add(record.bucketType);
-                    values.add(record.carryForward);
-                    values.add(record.carryForwardValidity);
-                    values.add(record.consumptionLimit);
-                    values.add(record.consumptionLimitWindow);
-                    values.add(record.currentBalance);
-                    values.add(record.expiration);
-                    values.add(record.initialBalance);
-                    values.add(record.maxCarryForward);
-                    values.add(record.priority);
-                    values.add(record.rule);
-                    values.add(record.serviceId);
-                    values.add(record.timeWindow);
-                    values.add(record.totalCarryForward);
-                    values.add(record.usage);
-                    values.add(record.updatedAt);
-                    values.add(record.isUnlimited);
-
-                    return client.preparedQuery(sql)
-                            .execute(Tuple.from(values))
-                            .map(result -> 1);
-                })
-                .collect().asList()
-                .map(List::size)
-                .onFailure().retry().atMost(2);
-    }
 
 
     
