@@ -353,49 +353,44 @@ public class ServiceInstanceDataGenerator {
 
     /**
      * Insert a batch of BUCKET_INSTANCE records
+     * Uses individual INSERT statements instead of INSERT ALL to support identity columns
      */
-    //todo Error Message = ORA-01400: cannot insert NULL into ("AAA"."BUCKET_INSTANCE"."ID")
     private Uni<Integer> insertBucketInstanceBatch(List<BucketInstanceRecord> batch) {
-        StringBuilder sql = new StringBuilder("INSERT ALL ");
-
-        String columns = "(BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
+        String sql = "INSERT INTO BUCKET_INSTANCE " +
+                "(BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
                 "CONSUMPTION_LIMIT, CONSUMPTION_LIMIT_WINDOW, CURRENT_BALANCE, EXPIRATION, " +
                 "INITIAL_BALANCE, MAX_CARRY_FORWARD, PRIORITY, RULE, SERVICE_ID, TIME_WINDOW, " +
-                "TOTAL_CARRY_FORWARD, USAGE, UPDATED_AT, IS_UNLIMITED)";
+                "TOTAL_CARRY_FORWARD, USAGE, UPDATED_AT, IS_UNLIMITED) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-        String placeholders = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        return Multi.createFrom().iterable(batch)
+                .onItem().transformToUniAndConcatenate(record -> {
+                    List<Object> values = new ArrayList<>();
+                    values.add(record.bucketId);
+                    values.add(record.bucketType);
+                    values.add(record.carryForward);
+                    values.add(record.carryForwardValidity);
+                    values.add(record.consumptionLimit);
+                    values.add(record.consumptionLimitWindow);
+                    values.add(record.currentBalance);
+                    values.add(record.expiration);
+                    values.add(record.initialBalance);
+                    values.add(record.maxCarryForward);
+                    values.add(record.priority);
+                    values.add(record.rule);
+                    values.add(record.serviceId);
+                    values.add(record.timeWindow);
+                    values.add(record.totalCarryForward);
+                    values.add(record.usage);
+                    values.add(record.updatedAt);
+                    values.add(record.isUnlimited);
 
-        List<Object> values = new ArrayList<>();
-
-        for (BucketInstanceRecord record : batch) {
-            sql.append("INTO BUCKET_INSTANCE ").append(columns)
-               .append(" VALUES ").append(placeholders).append(" ");
-
-            values.add(record.bucketId);
-            values.add(record.bucketType);
-            values.add(record.carryForward);
-            values.add(record.carryForwardValidity);
-            values.add(record.consumptionLimit);
-            values.add(record.consumptionLimitWindow);
-            values.add(record.currentBalance);
-            values.add(record.expiration);
-            values.add(record.initialBalance);
-            values.add(record.maxCarryForward);
-            values.add(record.priority);
-            values.add(record.rule);
-            values.add(record.serviceId);
-            values.add(record.timeWindow);
-            values.add(record.totalCarryForward);
-            values.add(record.usage);
-            values.add(record.updatedAt);
-            values.add(record.isUnlimited);
-        }
-
-        sql.append("SELECT * FROM DUAL");
-
-        return client.preparedQuery(sql.toString())
-                .execute(Tuple.from(values))
-                .map(result -> batch.size())
+                    return client.preparedQuery(sql)
+                            .execute(Tuple.from(values))
+                            .map(result -> 1);
+                })
+                .collect().asList()
+                .map(List::size)
                 .onFailure().retry().atMost(2);
     }
 
