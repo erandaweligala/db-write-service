@@ -325,15 +325,29 @@ public class ServiceInstanceDataGenerator {
      */
     private BucketInstanceRecord createBucketInstanceRecord(long serviceId, int priority,long id) {
         String bucketId = "BUCKET-" + serviceId + "-" + priority;
-        long initialBalance = 10_000_000_000L + random.nextLong(90_000_000_000L); // > 9999999999
 
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiration = now.plusDays(random.nextInt(365) + 30);
 
         int isUnlimited = random.nextInt(10) < 2 ? 1 : 0; // 20% unlimited
-        //todo if unlimited = 1 no bucket initialBalance and CURRENT_BALANCE Field should be  Null
 
+        // If unlimited = 1, set initialBalance and currentBalance to null
+        Long initialBalance = null;
+        Long currentBalance = null;
+        long consumptionLimit = 0L;
+        long maxCarryForward = 0L;
+        long totalCarryForward = 0L;
+        long usage = 0L;
 
+        if (isUnlimited == 0) {
+            // Limited bucket: generate balance values
+            initialBalance = 10_000_000_000L + random.nextLong(90_000_000_000L); // > 9999999999
+            currentBalance = initialBalance - random.nextLong(initialBalance / 10);
+            consumptionLimit = initialBalance / 10;
+            maxCarryForward = initialBalance / 5;
+            totalCarryForward = random.nextLong(initialBalance / 20);
+            usage = random.nextLong(initialBalance / 5);
+        }
 
         return new BucketInstanceRecord(
                 id,
@@ -341,18 +355,18 @@ public class ServiceInstanceDataGenerator {
                 BUCKET_TYPES[random.nextInt(BUCKET_TYPES.length)], // BUCKET_TYPE
                 random.nextInt(2),                                  // CARRY_FORWARD (0 or 1)
                 random.nextInt(90) + 30,                            // CARRY_FORWARD_VALIDITY
-                initialBalance / 10,                                // CONSUMPTION_LIMIT
+                consumptionLimit,                                   // CONSUMPTION_LIMIT
                 CONSUMTION_LIMIT[random.nextInt(TIME_WINDOWS.length)],  // CONSUMPTION_LIMIT_WINDOW
-                initialBalance - random.nextLong(initialBalance / 10), // CURRENT_BALANCE
+                currentBalance,                                     // CURRENT_BALANCE (NULL if unlimited)
                 expiration,                                         // EXPIRATION
-                initialBalance,                                     // INITIAL_BALANCE
-                initialBalance / 5,                                 // MAX_CARRY_FORWARD
+                initialBalance,                                     // INITIAL_BALANCE (NULL if unlimited)
+                maxCarryForward,                                    // MAX_CARRY_FORWARD
                 priority,                                           // PRIORITY
                 RULES[random.nextInt(RULES.length)],                // RULE
                 String.valueOf(serviceId),                          // SERVICE_ID (FK)
                 TIME_WINDOWS[random.nextInt(TIME_WINDOWS.length)],  // TIME_WINDOW
-                random.nextLong(initialBalance / 20),               // TOTAL_CARRY_FORWARD
-                random.nextLong(initialBalance / 5),                // USAGE
+                totalCarryForward,                                  // TOTAL_CARRY_FORWARD
+                usage,                                              // USAGE
                 now,                                                // UPDATED_AT
                 isUnlimited                                         // IS_UNLIMITED
         );
@@ -529,9 +543,9 @@ public class ServiceInstanceDataGenerator {
             int carryForwardValidity,
             long consumptionLimit,
             String consumptionLimitWindow,
-            long currentBalance,
+            Long currentBalance,
             LocalDateTime expiration,
-            long initialBalance,
+            Long initialBalance,
             long maxCarryForward,
             int priority,
             String rule,
