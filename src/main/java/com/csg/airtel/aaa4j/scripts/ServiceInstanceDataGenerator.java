@@ -38,9 +38,9 @@ public class ServiceInstanceDataGenerator {
 
     // Configuration constants
     private static final int SERVICES_PER_USER = 3;
-    private static final int BATCH_SIZE = 100;
+    private static final int BATCH_SIZE = 400;
     private static final int PROGRESS_INTERVAL = 500;
-    private static final int CONCURRENT_BATCHES = 5;
+    private static final int CONCURRENT_BATCHES = 1;
 
     // SERVICE_INSTANCE constants
     private static final String[] PLAN_IDS = {
@@ -50,12 +50,12 @@ public class ServiceInstanceDataGenerator {
     };
 
     private static final String[] PLAN_TYPES = {"PREPAID", "POSTPAID", "HYBRID"};
-    private static final String[] STATUSES = {"ACTIVE", "SUSPENDED", "INACTIVE", "PENDING"};
+    private static final String[] STATUSES = {"ACTIVE", "SUSPENDED", "INACTIVE"};
     private static final String[] BILLING_TYPES = {"MONTHLY", "QUARTERLY", "YEARLY", "USAGE_BASED"};
 
     // BUCKET_INSTANCE constants
     private static final String[] TIME_WINDOWS = {"00-08", "00-24", "00-18", "18-24"};
-    private static final String[] BUCKET_TYPES = {"DATA", "VOICE", "SMS", "COMBO"};
+    private static final String[] BUCKET_TYPES = {"DATA", "COMBO"};
     private static final String[] RULES = {"PEAK", "OFF_PEAK", "ANYTIME", "WEEKEND", "SPECIAL"};
 
     private final Pool client;
@@ -69,6 +69,7 @@ public class ServiceInstanceDataGenerator {
     /**
      * Main execution method - generates data for all users
      */
+
     public Uni<GenerationResult> generateData() {
         log.info("Starting SERVICE_INSTANCE and BUCKET_INSTANCE data generation");
         Instant startTime = Instant.now();
@@ -86,10 +87,11 @@ public class ServiceInstanceDataGenerator {
     /**
      * Fetch all usernames from AAA_USER table
      */
+    //to
     private Uni<List<String>> fetchUsernames() {
         log.info("Fetching usernames from AAA_USER table...");
 
-        return client.query("SELECT USER_NAME FROM AAA_USER ORDER BY USER_NAME")
+        return client.query("SELECT USER_NAME FROM AAA_USER ORDER BY USER_NAME FETCH FIRST 10000 ROWS ONLY")
                 .execute()
                 .map(rows -> {
                     List<String> usernames = new ArrayList<>();
@@ -186,7 +188,7 @@ public class ServiceInstanceDataGenerator {
                 serviceId,
                 now,                                          // CREATED_AT
                 expiryDate,                                   // EXPIRY_DATE
-                random.nextInt(2),                            // IS_GROUP (0 or 1)
+                1,                            // IS_GROUP (0 or 1)
                 nextCycleStartDate,                           // NEXT_CYCLE_START_DATE
                 planId,                                       // PLAN_ID
                 planName,                                     // PLAN_NAME
@@ -352,22 +354,25 @@ public class ServiceInstanceDataGenerator {
     /**
      * Insert a batch of BUCKET_INSTANCE records
      */
+    //todo error for unique constraint (AAA.SYS_C006890) violated
     private Uni<Integer> insertBucketInstanceBatch(List<BucketInstanceRecord> batch) {
         StringBuilder sql = new StringBuilder("INSERT ALL ");
 
-        String columns = "(BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
+        String columns = "(ID,BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
                 "CONSUMPTION_LIMIT, CONSUMPTION_LIMIT_WINDOW, CURRENT_BALANCE, EXPIRATION, " +
                 "INITIAL_BALANCE, MAX_CARRY_FORWARD, PRIORITY, RULE, SERVICE_ID, TIME_WINDOW, " +
                 "TOTAL_CARRY_FORWARD, USAGE, UPDATED_AT, IS_UNLIMITED)";
 
-        String placeholders = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String placeholders = "(?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         List<Object> values = new ArrayList<>();
+
 
         for (BucketInstanceRecord record : batch) {
             sql.append("INTO BUCKET_INSTANCE ").append(columns)
                .append(" VALUES ").append(placeholders).append(" ");
-
+            AtomicLong serviceIdCounter = new AtomicLong(System.currentTimeMillis() % 1000000);
+            values.add(serviceIdCounter.incrementAndGet());
             values.add(record.bucketId);
             values.add(record.bucketType);
             values.add(record.carryForward);
@@ -386,6 +391,7 @@ public class ServiceInstanceDataGenerator {
             values.add(record.usage);
             values.add(record.updatedAt);
             values.add(record.isUnlimited);
+
         }
 
         sql.append("SELECT * FROM DUAL");

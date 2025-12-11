@@ -598,6 +598,8 @@ public class BulkInsertScript {
      * @param outputDir The directory to write the CSV file (null for temp directory)
      * @return Uni containing combined result of insert and export
      */
+
+    //todo need to get from dataBase
     public Uni<BulkInsertWithExportResult> executeBulkInsertWithCsvExport(String tableName, int totalRecords,
                                                                            int batchSize, String outputDir) {
         log.infof("Starting bulk insert with CSV export: table=%s, totalRecords=%d, batchSize=%d",

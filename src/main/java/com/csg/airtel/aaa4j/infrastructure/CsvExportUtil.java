@@ -191,43 +191,43 @@ public class CsvExportUtil {
         StringBuilder sb = new StringBuilder();
 
         // USER_ID
-        sb.append(escapeCSV(getString(row, "USER_ID"))).append(",");
+     //   sb.append(escapeCSV(getString(row, "USER_ID"))).append(",");
         // BANDWIDTH
-        sb.append(escapeCSV(getString(row, "BANDWIDTH"))).append(",");
+     //   sb.append(escapeCSV(getString(row, "BANDWIDTH"))).append(",");
         // BILLING
-        sb.append(escapeCSV(getString(row, "BILLING"))).append(",");
+    //    sb.append(escapeCSV(getString(row, "BILLING"))).append(",");
         // BILLING_ACCOUNT_REF
-        sb.append(escapeCSV(getString(row, "BILLING_ACCOUNT_REF"))).append(",");
+      //  sb.append(escapeCSV(getString(row, "BILLING_ACCOUNT_REF"))).append(",");
         // CIRCUIT_ID
-        sb.append(escapeCSV(getString(row, "CIRCUIT_ID"))).append(",");
+     //   sb.append(escapeCSV(getString(row, "CIRCUIT_ID"))).append(",");
         // CONCURRENCY
-        sb.append(escapeCSV(getString(row, "CONCURRENCY"))).append(",");
+      //  sb.append(escapeCSV(getString(row, "CONCURRENCY"))).append(",");
         // CONTACT_EMAIL
-        sb.append(escapeCSV(getString(row, "CONTACT_EMAIL"))).append(",");
+      //  sb.append(escapeCSV(getString(row, "CONTACT_EMAIL"))).append(",");
         // CONTACT_NAME
-        sb.append(escapeCSV(getString(row, "CONTACT_NAME"))).append(",");
+     //   sb.append(escapeCSV(getString(row, "CONTACT_NAME"))).append(",");
         // CONTACT_NUMBER
-        sb.append(escapeCSV(getString(row, "CONTACT_NUMBER"))).append(",");
+     //   sb.append(escapeCSV(getString(row, "CONTACT_NUMBER"))).append(",");
         // CREATED_DATE
-        sb.append(escapeCSV(getDateString(row, "CREATED_DATE"))).append(",");
+      //  sb.append(escapeCSV(getDateString(row, "CREATED_DATE"))).append(",");
         // CUSTOM_TIMEOUT
-        sb.append(escapeCSV(getString(row, "CUSTOM_TIMEOUT"))).append(",");
+     //   sb.append(escapeCSV(getString(row, "CUSTOM_TIMEOUT"))).append(",");
         // CYCLE_DATE
-        sb.append(escapeCSV(getString(row, "CYCLE_DATE"))).append(",");
+       // sb.append(escapeCSV(getString(row, "CYCLE_DATE"))).append(",");
         // ENCRYPTION_METHOD
-        sb.append(escapeCSV(getString(row, "ENCRYPTION_METHOD"))).append(",");
+      //  sb.append(escapeCSV(getString(row, "ENCRYPTION_METHOD"))).append(",");
         // GROUP_ID
-        sb.append(escapeCSV(getString(row, "GROUP_ID"))).append(",");
+      //  sb.append(escapeCSV(getString(row, "GROUP_ID"))).append(",");
         // IDLE_TIMEOUT
-        sb.append(escapeCSV(getString(row, "IDLE_TIMEOUT"))).append(",");
+      //  sb.append(escapeCSV(getString(row, "IDLE_TIMEOUT"))).append(",");
         // IP_ALLOCATION
-        sb.append(escapeCSV(getString(row, "IP_ALLOCATION"))).append(",");
+      //  sb.append(escapeCSV(getString(row, "IP_ALLOCATION"))).append(",");
         // IP_POOL_NAME
-        sb.append(escapeCSV(getString(row, "IP_POOL_NAME"))).append(",");
+     //   sb.append(escapeCSV(getString(row, "IP_POOL_NAME"))).append(",");
         // IPV4
-        sb.append(escapeCSV(getString(row, "IPV4"))).append(",");
+       // sb.append(escapeCSV(getString(row, "IPV4"))).append(",");
         // IPV6
-        sb.append(escapeCSV(getString(row, "IPV6"))).append(",");
+      //  sb.append(escapeCSV(getString(row, "IPV6"))).append(",");
         // MAC_ADDRESS (formatted with colons)
         String macAddress = getString(row, "MAC_ADDRESS");
         sb.append(escapeCSV(formatMacAddress(macAddress))).append(",");
@@ -238,23 +238,23 @@ public class CsvExportUtil {
         String processedPassword = md5HashUtil.hashIfChap(password);
         sb.append(escapeCSV(processedPassword)).append(",");
         // REMOTE_ID
-        sb.append(escapeCSV(getString(row, "REMOTE_ID"))).append(",");
+    //    sb.append(escapeCSV(getString(row, "REMOTE_ID"))).append(",");
         // REQUEST_ID
-        sb.append(escapeCSV(getString(row, "REQUEST_ID"))).append(",");
+     //   sb.append(escapeCSV(getString(row, "REQUEST_ID"))).append(",");
         // SESSION_TIMEOUT
-        sb.append(escapeCSV(getString(row, "SESSION_TIMEOUT"))).append(",");
+    //    sb.append(escapeCSV(getString(row, "SESSION_TIMEOUT"))).append(",");
         // STATUS
-        sb.append(escapeCSV(getString(row, "STATUS"))).append(",");
+     //   sb.append(escapeCSV(getString(row, "STATUS"))).append(",");
         // UPDATED_DATE
-        sb.append(escapeCSV(getDateString(row, "UPDATED_DATE"))).append(",");
+    //    sb.append(escapeCSV(getDateString(row, "UPDATED_DATE"))).append(",");
         // USER_NAME
         sb.append(escapeCSV(getString(row, "USER_NAME"))).append(",");
         // VLAN_ID
-        sb.append(escapeCSV(getString(row, "VLAN_ID"))).append(",");
+  //      sb.append(escapeCSV(getString(row, "VLAN_ID"))).append(",");
         // NAS_IP_ADDRESS
         sb.append(escapeCSV(getString(row, "NAS_IP_ADDRESS"))).append(",");
         // SUBSCRIPTION
-        sb.append(escapeCSV(getString(row, "SUBSCRIPTION")));
+     //   sb.append(escapeCSV(getString(row, "SUBSCRIPTION")));
 
         return sb.toString();
     }
