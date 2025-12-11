@@ -12,6 +12,12 @@ quarkus:
   vertx:
     event-loops-pool-size: 32
     max-worker-execute-time: 60
+  # Redis Configuration - Optimized for 1000 TPS
+  redis:
+    hosts: redis://localhost:6379
+    timeout: 10s
+    max-pool-size: 100
+    max-pool-waiting: 200
 
   log:
     level: INFO
@@ -23,8 +29,8 @@ quarkus:
 pool:
   max-size: 200                      # Max connections
   connection-timeout: 5000          # 5 seconds to acquire connection
-  idle-timeout: 600000              # 10 minutes idle before closing
-  max-lifetime: 1800000             # 30 minutes max connection lifetime
+  idle-timeout: 6000000              # 10 minutes idle before closing
+  max-lifetime: 18000000             # 30 minutes max connection lifetime
   acquire-increment: 4              # Connections to acquire at once
   prepared-statement-cache-max-size: 256  # Cache prepared statements
   pipelining-enabled: true          # Enable query pipelining

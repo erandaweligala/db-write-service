@@ -1,7 +1,9 @@
 package com.csg.airtel.aaa4j.scripts;
 
+import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
+import io.vertx.core.json.JsonArray;
 import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.Row;
 import io.vertx.mutiny.sqlclient.Tuple;
@@ -13,10 +15,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -31,18 +30,20 @@ import java.util.concurrent.atomic.AtomicLong;
  * - Batch processing for optimal performance
  * - Progress reporting and error handling
  */
+//todo too slow data insert users count 1000000 need to prefer implementation
 @ApplicationScoped
 public class ServiceInstanceDataGenerator {
 
     private static final Logger log = Logger.getLogger(ServiceInstanceDataGenerator.class);
-
+    @Inject
+     ReactiveRedisDataSource reactiveRedisDataSource;
     // Configuration constants
     private static final int SERVICES_PER_USER = 3;
-    private static final int BATCH_SIZE = 400;
-    private static final int BUCKET_BATCH_SIZE = 1000; // Larger batch size for bucket inserts
+    private static final int BATCH_SIZE = 1000;
+    private static final int BUCKET_BATCH_SIZE = 2000; // Larger batch size for bucket inserts
     private static final int PROGRESS_INTERVAL = 500;
     private static final int CONCURRENT_BATCHES = 1;
-    private static final int BUCKET_CONCURRENT_BATCHES = 5; // Higher concurrency for bucket inserts
+    private static final int BUCKET_CONCURRENT_BATCHES = 1; // Higher concurrency for bucket inserts
 
     // SERVICE_INSTANCE constants
     private static final String[] PLAN_IDS = {
@@ -52,7 +53,7 @@ public class ServiceInstanceDataGenerator {
     };
 
     private static final String[] PLAN_TYPES = {"PREPAID", "POSTPAID", "HYBRID"};
-    private static final String[] STATUSES = {"ACTIVE", "SUSPENDED", "INACTIVE"};
+    private static final String[] STATUSES = {"Active", "Suspend", "Inactive"};
     private static final String[] BILLING_TYPES = {"MONTHLY", "QUARTERLY", "YEARLY", "USAGE_BASED"};
 
     // BUCKET_INSTANCE constants
@@ -93,19 +94,33 @@ public class ServiceInstanceDataGenerator {
     //to
     private Uni<List<String>> fetchUsernames() {
         log.info("Fetching usernames from AAA_USER table...");
-//SELECT USER_NAME FROM AAA_USER ORDER BY USER_NAME FETCH FIRST 10 ROWS ONLY
-        return client.query("SELECT USER_NAME FROM AAA_USER ORDER BY USER_NAME FETCH FIRST 1000 ROWS ONLY")
-                .execute()
-                .map(rows -> {
-                    List<String> usernames = new ArrayList<>();
-                    for (Row row : rows) {
-                        usernames.add(row.getString("USER_NAME"));
+
+        return getUserData()
+                .onItem()
+                .transformToUni(usernames -> {
+                    if (usernames == null || usernames.isEmpty()) {
+                        return client.query("SELECT USER_NAME FROM AAA_USER ORDER BY USER_NAME")
+                                .execute()
+                                .onItem()
+                                .transformToUni(rows -> {
+                                    List<String> usernameList = new ArrayList<>();
+                                    for (Row row : rows) {
+                                        usernameList.add(row.getString("USER_NAME"));
+                                    }
+                                    return storeUserData(usernameList)
+                                            .onFailure()
+                                            .invoke(throwable -> {
+                                                log.warnf("Unable to store usernames to cache");
+                                            })
+                                            .replaceWith(usernameList);
+                                })
+                                .onFailure()
+                                .invoke(e -> log.errorf(e, "Failed to fetch usernames from AAA_USER: %s", e.getMessage()));
+                    } else {
+                        log.infof("load data from cache");
+                        return Uni.createFrom().item(usernames);
                     }
-                    return usernames;
-                })
-                .onFailure().invoke(e ->
-                    log.errorf(e, "Failed to fetch usernames from AAA_USER: %s", e.getMessage())
-                );
+                });
     }
 
     /**
@@ -306,7 +321,7 @@ public class ServiceInstanceDataGenerator {
         for (int i = 0; i < serviceRecords.size(); i++) {
             long serviceId = serviceIds.get(i);
             // Generate 2-5 bucket instances per service
-            int bucketCount = random.nextInt(4) + 2;
+            int bucketCount = random.nextInt(3) + 2;
 
             for (int j = 0; j < bucketCount; j++) {
                 bucketRecords.add(createBucketInstanceRecord(serviceId, j + 1,serviceIdCounter.incrementAndGet()));
@@ -356,7 +371,7 @@ public class ServiceInstanceDataGenerator {
                 random.nextInt(2),                                  // CARRY_FORWARD (0 or 1)
                 random.nextInt(90) + 30,                            // CARRY_FORWARD_VALIDITY
                 consumptionLimit,                                   // CONSUMPTION_LIMIT
-                CONSUMTION_LIMIT[random.nextInt(TIME_WINDOWS.length)],  // CONSUMPTION_LIMIT_WINDOW
+                CONSUMTION_LIMIT[random.nextInt(CONSUMTION_LIMIT.length)],  // CONSUMPTION_LIMIT_WINDOW
                 currentBalance,                                     // CURRENT_BALANCE (NULL if unlimited)
                 expiration,                                         // EXPIRATION
                 initialBalance,                                     // INITIAL_BALANCE (NULL if unlimited)
@@ -513,6 +528,8 @@ public class ServiceInstanceDataGenerator {
                 .onFailure().retry().atMost(2);
     }
 
+
+    
     // Record classes for data structures
     private record ServiceInstanceRecord(
             long id,
@@ -579,5 +596,68 @@ public class ServiceInstanceDataGenerator {
             long seconds = duration.toSecondsPart();
             return String.format("%dm %ds", minutes, seconds);
         }
+    }
+
+    public Uni<Void> storeUserData(List<String> userNames) {
+        final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
+        if (log.isDebugEnabled()) {
+            log.debugf("Storing %d usernames in cache", userNames.size());
+        }
+
+        // Convert List to JsonArray for proper Redis storage
+        JsonArray jsonArray = new JsonArray(userNames);
+
+        return reactiveRedisDataSource.value(String.class)
+                .set("usernames", jsonArray.encode())
+                .invoke(() -> {
+                    if (log.isDebugEnabled()) {
+                        log.debugf("Stored %d usernames in cache in %d ms",
+                                userNames.size(),
+                                (System.currentTimeMillis() - startTime));
+                    }
+                })
+                .onFailure()
+                .invoke(e -> log.errorf(e, "Failed to store usernames in cache: %s", e.getMessage()));
+    }
+    public Uni<List<String>> getUserData() {
+        final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
+        if (log.isDebugEnabled()) {
+            log.debug("Retrieving user data from cache");
+        }
+        log.info("Retrieving user data from cache");
+
+        return reactiveRedisDataSource.value(String.class)
+                .get("usernames")
+                .onItem().transform(value -> {
+                    if (value == null) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("No user data found in cache");
+                        }
+                        log.info("No user data found in cache, will fetch from database");
+                        return Collections.emptyList();
+                    }
+
+                    try {
+                        // Convert the JSON string back to JsonArray
+                        JsonArray jsonArray = new JsonArray(value);
+                        List<String> userNames = new ArrayList<>();
+
+                        for (int i = 0; i < jsonArray.size(); i++) {
+                            userNames.add(jsonArray.getString(i));
+                        }
+
+                        if (log.isDebugEnabled()) {
+                            log.debugf("Retrieved %d usernames from cache in %d ms",
+                                    userNames.size(), (System.currentTimeMillis() - startTime));
+                        }
+                        log.infof("User data retrieved from cache: %d usernames", userNames.size());
+                        return userNames;
+
+                    } catch (Exception e) {
+                        log.errorf(e, "Failed to parse cached user data: %s", e.getMessage());
+                        return Collections.emptyList();
+                    }
+                })
+                .onFailure().recoverWithNull().replaceWith(Collections.emptyList());
     }
 }
