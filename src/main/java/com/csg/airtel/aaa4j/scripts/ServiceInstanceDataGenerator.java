@@ -39,8 +39,10 @@ public class ServiceInstanceDataGenerator {
     // Configuration constants
     private static final int SERVICES_PER_USER = 3;
     private static final int BATCH_SIZE = 5;
+    private static final int BUCKET_BATCH_SIZE = 1000; // Larger batch size for bucket inserts
     private static final int PROGRESS_INTERVAL = 500;
     private static final int CONCURRENT_BATCHES = 1;
+    private static final int BUCKET_CONCURRENT_BATCHES = 5; // Higher concurrency for bucket inserts
 
     // SERVICE_INSTANCE constants
     private static final String[] PLAN_IDS = {
@@ -352,11 +354,106 @@ public class ServiceInstanceDataGenerator {
     }
 
     /**
-     * Insert a batch of BUCKET_INSTANCE records
-     * Uses individual INSERT statements instead of INSERT ALL to support identity columns
+     * Insert a batch of BUCKET_INSTANCE records using optimized batch processing
+     * Supports large-scale inserts (e.g., 4 million records) by:
+     * - Chunking large batches into manageable sizes (BUCKET_BATCH_SIZE)
+     * - Parallel processing multiple chunks concurrently
+     * - Using INSERT ALL for efficient batch inserts
      */
-    // todo is this support for 4000000 record insert
     private Uni<Integer> insertBucketInstanceBatch(List<BucketInstanceRecord> batch) {
+        if (batch.isEmpty()) {
+            return Uni.createFrom().item(0);
+        }
+
+        AtomicInteger totalInserted = new AtomicInteger(0);
+        AtomicInteger processedChunks = new AtomicInteger(0);
+        int totalChunks = (batch.size() + BUCKET_BATCH_SIZE - 1) / BUCKET_BATCH_SIZE;
+
+        // Split into chunks and process in parallel
+        return Multi.createFrom().iterable(batch)
+                .group().intoLists().of(BUCKET_BATCH_SIZE)
+                .capDemandsTo(BUCKET_CONCURRENT_BATCHES)
+                .onItem().transformToUniAndMerge(chunk ->
+                    insertBucketChunk(chunk)
+                        .onItem().invoke(count -> {
+                            totalInserted.addAndGet(count);
+                            int completed = processedChunks.incrementAndGet();
+                            if (completed % 10 == 0 || completed == totalChunks) {
+                                log.infof("Bucket insertion progress: %d/%d chunks (%d records)",
+                                        completed, totalChunks, totalInserted.get());
+                            }
+                        })
+                        .onFailure().invoke(e ->
+                            log.errorf(e, "Failed to insert bucket chunk: %s", e.getMessage())
+                        )
+                        .onFailure().recoverWithItem(0)
+                )
+                .collect().asList()
+                .map(results -> totalInserted.get());
+    }
+
+    /**
+     * Insert a single chunk of BUCKET_INSTANCE records using INSERT ALL
+     * Optimized for Oracle with parameterized batch inserts
+     */
+    private Uni<Integer> insertBucketChunk(List<BucketInstanceRecord> chunk) {
+        if (chunk.isEmpty()) {
+            return Uni.createFrom().item(0);
+        }
+
+        // For very small chunks (< 5), use individual inserts to avoid overhead
+        if (chunk.size() < 5) {
+            return insertBucketIndividual(chunk);
+        }
+
+        StringBuilder sql = new StringBuilder("INSERT ALL ");
+
+        String columns = "(BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
+                "CONSUMPTION_LIMIT, CONSUMPTION_LIMIT_WINDOW, CURRENT_BALANCE, EXPIRATION, " +
+                "INITIAL_BALANCE, MAX_CARRY_FORWARD, PRIORITY, RULE, SERVICE_ID, TIME_WINDOW, " +
+                "TOTAL_CARRY_FORWARD, USAGE, UPDATED_AT, IS_UNLIMITED)";
+
+        String placeholders = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+        List<Object> values = new ArrayList<>();
+
+        for (BucketInstanceRecord record : chunk) {
+            sql.append("INTO BUCKET_INSTANCE ").append(columns)
+               .append(" VALUES ").append(placeholders).append(" ");
+
+            values.add(record.bucketId);
+            values.add(record.bucketType);
+            values.add(record.carryForward);
+            values.add(record.carryForwardValidity);
+            values.add(record.consumptionLimit);
+            values.add(record.consumptionLimitWindow);
+            values.add(record.currentBalance);
+            values.add(record.expiration);
+            values.add(record.initialBalance);
+            values.add(record.maxCarryForward);
+            values.add(record.priority);
+            values.add(record.rule);
+            values.add(record.serviceId);
+            values.add(record.timeWindow);
+            values.add(record.totalCarryForward);
+            values.add(record.usage);
+            values.add(record.updatedAt);
+            values.add(record.isUnlimited);
+        }
+
+        sql.append("SELECT * FROM DUAL");
+
+        return client.preparedQuery(sql.toString())
+                .execute(Tuple.from(values))
+                .map(result -> chunk.size())
+                .onFailure().retry().atMost(2);
+    }
+
+    /**
+     * Fallback method for inserting small batches individually
+     * Used for chunks smaller than 5 records to avoid INSERT ALL overhead
+     */
+    private Uni<Integer> insertBucketIndividual(List<BucketInstanceRecord> records) {
         String sql = "INSERT INTO BUCKET_INSTANCE " +
                 "(BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
                 "CONSUMPTION_LIMIT, CONSUMPTION_LIMIT_WINDOW, CURRENT_BALANCE, EXPIRATION, " +
@@ -364,7 +461,7 @@ public class ServiceInstanceDataGenerator {
                 "TOTAL_CARRY_FORWARD, USAGE, UPDATED_AT, IS_UNLIMITED) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-        return Multi.createFrom().iterable(batch)
+        return Multi.createFrom().iterable(records)
                 .onItem().transformToUniAndConcatenate(record -> {
                     List<Object> values = new ArrayList<>();
                     values.add(record.bucketId);
