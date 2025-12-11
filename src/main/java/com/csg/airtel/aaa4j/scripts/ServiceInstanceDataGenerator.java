@@ -38,7 +38,7 @@ public class ServiceInstanceDataGenerator {
 
     // Configuration constants
     private static final int SERVICES_PER_USER = 3;
-    private static final int BATCH_SIZE = 400;
+    private static final int BATCH_SIZE = 5;
     private static final int PROGRESS_INTERVAL = 500;
     private static final int CONCURRENT_BATCHES = 1;
 
@@ -91,7 +91,7 @@ public class ServiceInstanceDataGenerator {
     private Uni<List<String>> fetchUsernames() {
         log.info("Fetching usernames from AAA_USER table...");
 
-        return client.query("SELECT USER_NAME FROM AAA_USER ORDER BY USER_NAME FETCH FIRST 10000 ROWS ONLY")
+        return client.query("SELECT USER_NAME FROM AAA_USER ORDER BY USER_NAME FETCH FIRST 10 ROWS ONLY")
                 .execute()
                 .map(rows -> {
                     List<String> usernames = new ArrayList<>();
@@ -354,6 +354,7 @@ public class ServiceInstanceDataGenerator {
     /**
      * Insert a batch of BUCKET_INSTANCE records
      */
+    //todo Error Message = ORA-01400: cannot insert NULL into ("AAA"."BUCKET_INSTANCE"."ID")
     private Uni<Integer> insertBucketInstanceBatch(List<BucketInstanceRecord> batch) {
         StringBuilder sql = new StringBuilder("INSERT ALL ");
 
