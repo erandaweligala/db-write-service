@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * - Batch processing for optimal performance
  * - Progress reporting and error handling
  */
-//todo too slow data insert users count 1000000 need to prefer implementation
+//todo too slow data ServiceInstanceDataGenerator need to prefer implementation
 @ApplicationScoped
 public class ServiceInstanceDataGenerator {
 
