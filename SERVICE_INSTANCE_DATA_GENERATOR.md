@@ -56,10 +56,10 @@ Stores data/voice/SMS buckets for each service instance.
 - `BUCKET_ID` (VARCHAR2) - Unique business identifier
 - `SERVICE_ID` (VARCHAR2) - References `SERVICE_INSTANCE.ID`
 - `BUCKET_TYPE` (VARCHAR2) - DATA, VOICE, SMS, or COMBO
-- `INITIAL_BALANCE` (NUMBER) - Starting balance (> 9,999,999,999)
-- `CURRENT_BALANCE` (NUMBER) - Remaining balance
-- `USAGE` (NUMBER) - Amount consumed
-- `CONSUMPTION_LIMIT` (NUMBER) - Usage limit
+- `INITIAL_BALANCE` (NUMBER) - Starting balance (> 9,999,999,999, NULL for unlimited buckets)
+- `CURRENT_BALANCE` (NUMBER) - Remaining balance (NULL for unlimited buckets)
+- `USAGE` (NUMBER) - Amount consumed (0 for unlimited buckets)
+- `CONSUMPTION_LIMIT` (NUMBER) - Usage limit (0 for unlimited buckets)
 - `CONSUMPTION_LIMIT_WINDOW` (VARCHAR2) - Time window for limit
 - `PRIORITY` (NUMBER) - Consumption priority (1 = highest)
 - `RULE` (VARCHAR2) - PEAK, OFF_PEAK, ANYTIME, WEEKEND, SPECIAL
@@ -67,8 +67,8 @@ Stores data/voice/SMS buckets for each service instance.
 - `EXPIRATION` (TIMESTAMP) - Bucket expiry date
 - `CARRY_FORWARD` (NUMBER) - 0 or 1
 - `CARRY_FORWARD_VALIDITY` (NUMBER) - Days valid for carry forward
-- `MAX_CARRY_FORWARD` (NUMBER) - Maximum carryable amount
-- `TOTAL_CARRY_FORWARD` (NUMBER) - Current carried forward amount
+- `MAX_CARRY_FORWARD` (NUMBER) - Maximum carryable amount (0 for unlimited buckets)
+- `TOTAL_CARRY_FORWARD` (NUMBER) - Current carried forward amount (0 for unlimited buckets)
 - `IS_UNLIMITED` (NUMBER) - 0 or 1 (20% chance of 1)
 - `UPDATED_AT` (TIMESTAMP) - Last update timestamp
 
@@ -96,12 +96,21 @@ Stores data/voice/SMS buckets for each service instance.
 | Column | Rule | Example Values |
 |--------|------|----------------|
 | `BUCKET_ID` | Unique identifier | BUCKET-{SERVICE_ID}-{PRIORITY} |
-| `INITIAL_BALANCE` | Must be > 9,999,999,999 | Random between 10 billion and 100 billion |
+| `INITIAL_BALANCE` | Must be > 9,999,999,999 (NULL if unlimited) | Random between 10 billion and 100 billion, or NULL |
+| `CURRENT_BALANCE` | Calculated from initial balance (NULL if unlimited) | INITIAL_BALANCE - usage, or NULL |
 | `EXPIRATION` | Future date | 30-395 days from now |
 | `PRIORITY` | Sequential per service | 1, 2, 3, 4, 5 (lower = higher priority) |
 | `RULE` | Random selection | PEAK, OFF_PEAK, ANYTIME, WEEKEND, SPECIAL |
 | `TIME_WINDOW` | From list | 00-08, 00-24, 00-18, 18-24 |
 | `IS_UNLIMITED` | Random flag | 0 or 1 (20% chance of unlimited) |
+
+**Important**: When `IS_UNLIMITED = 1`, the following fields are set to NULL or 0:
+- `INITIAL_BALANCE` = NULL
+- `CURRENT_BALANCE` = NULL
+- `USAGE` = 0
+- `CONSUMPTION_LIMIT` = 0
+- `MAX_CARRY_FORWARD` = 0
+- `TOTAL_CARRY_FORWARD` = 0
 
 ## Installation & Setup
 
@@ -297,11 +306,14 @@ GROUP BY
     ELSE 'VALID'
   END;
 
--- Verify INITIAL_BALANCE > 9,999,999,999
+-- Verify INITIAL_BALANCE > 9,999,999,999 for limited buckets
+-- and NULL for unlimited buckets
 SELECT
   COUNT(*) AS TOTAL_BUCKETS,
-  SUM(CASE WHEN INITIAL_BALANCE > 9999999999 THEN 1 ELSE 0 END) AS VALID_BALANCE,
-  SUM(CASE WHEN INITIAL_BALANCE <= 9999999999 THEN 1 ELSE 0 END) AS INVALID_BALANCE
+  SUM(CASE WHEN IS_UNLIMITED = 0 AND INITIAL_BALANCE > 9999999999 THEN 1 ELSE 0 END) AS VALID_LIMITED,
+  SUM(CASE WHEN IS_UNLIMITED = 0 AND (INITIAL_BALANCE IS NULL OR INITIAL_BALANCE <= 9999999999) THEN 1 ELSE 0 END) AS INVALID_LIMITED,
+  SUM(CASE WHEN IS_UNLIMITED = 1 AND INITIAL_BALANCE IS NULL THEN 1 ELSE 0 END) AS VALID_UNLIMITED,
+  SUM(CASE WHEN IS_UNLIMITED = 1 AND INITIAL_BALANCE IS NOT NULL THEN 1 ELSE 0 END) AS INVALID_UNLIMITED
 FROM BUCKET_INSTANCE;
 
 -- Verify TIME_WINDOW distribution
@@ -315,6 +327,18 @@ SELECT
   IS_UNLIMITED,
   COUNT(*) AS COUNT,
   ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM BUCKET_INSTANCE), 1) AS PERCENTAGE
+FROM BUCKET_INSTANCE
+GROUP BY IS_UNLIMITED
+ORDER BY IS_UNLIMITED;
+
+-- Verify unlimited buckets have NULL balances
+SELECT
+  IS_UNLIMITED,
+  COUNT(*) AS TOTAL,
+  SUM(CASE WHEN INITIAL_BALANCE IS NULL THEN 1 ELSE 0 END) AS NULL_INITIAL,
+  SUM(CASE WHEN CURRENT_BALANCE IS NULL THEN 1 ELSE 0 END) AS NULL_CURRENT,
+  SUM(CASE WHEN INITIAL_BALANCE IS NOT NULL THEN 1 ELSE 0 END) AS NON_NULL_INITIAL,
+  SUM(CASE WHEN CURRENT_BALANCE IS NOT NULL THEN 1 ELSE 0 END) AS NON_NULL_CURRENT
 FROM BUCKET_INSTANCE
 GROUP BY IS_UNLIMITED
 ORDER BY IS_UNLIMITED;
