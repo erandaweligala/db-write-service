@@ -355,6 +355,7 @@ public class ServiceInstanceDataGenerator {
      * Insert a batch of BUCKET_INSTANCE records
      * Uses individual INSERT statements instead of INSERT ALL to support identity columns
      */
+    // todo is this support for 4000000 record insert
     private Uni<Integer> insertBucketInstanceBatch(List<BucketInstanceRecord> batch) {
         String sql = "INSERT INTO BUCKET_INSTANCE " +
                 "(BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
