@@ -319,7 +319,7 @@ public class ServiceInstanceDataGenerator {
         return Multi.createFrom().range(0, serviceRecords.size())
                 .onItem().transformToMulti(i -> {
                     long serviceId = serviceIds.get(i);
-                    int bucketCount = random.nextInt(1) + 1;  // 2-5 buckets per service
+                    int bucketCount = random.nextInt(4) + 2;  // 2-5 buckets per service
 
                     return Multi.createFrom().range(0, bucketCount)
                         .map(j -> createBucketInstanceRecord(serviceId, j + 1, bucketIdCounter.incrementAndGet()));
