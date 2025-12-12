@@ -8,10 +8,28 @@ quarkus:
     password: Aaa!89nky78D
     reactive:
       url: oracle:thin:@localhost:1522/ORCL
-
-  vertx:
-    event-loops-pool-size: 32
-    max-worker-execute-time: 60
+      max-size: 20
+      event-loop-size: 8
+      idle-timeout: PT15M
+      max-lifetime: PT15M
+      cache-prepared-statements: true
+      reconnect-attempts: 3
+      reconnect-interval: PT2S
+      shared: false
+      name: oracle-pool
+      additional-properties:
+        oracle.jdbc.implicitStatementCacheSize: "250"
+        oracle.jdbc.ReadTimeout: "60000"                   # Increased to 60s for high CPU/load scenarios
+        oracle.net.CONNECT_TIMEOUT: "30000"                # Increased to 30s for connection establishment
+        oracle.net.READ_TIMEOUT: "60000"                   # Socket-level read timeout (60s)
+        oracle.jdbc.loginTimeout: "60"                     # Login timeout in seconds
+        oracle.jdbc.defaultRowPrefetch: "100"
+        oracle.net.keepAlive: "true"
+  otel:
+    enabled: false
+  #  vertx:
+#    event-loops-pool-size: 32
+#    max-worker-execute-time: 60
   # Redis Configuration - Optimized for 1000 TPS
   redis:
     hosts: redis://localhost:6379
@@ -26,20 +44,20 @@ quarkus:
   console:
     color: true
 # Pool Configuration
-pool:
-  max-size: 200                      # Max connections
-  connection-timeout: 5000          # 5 seconds to acquire connection
-  idle-timeout: 6000000              # 10 minutes idle before closing
-  max-lifetime: 18000000             # 30 minutes max connection lifetime
-  acquire-increment: 4              # Connections to acquire at once
-  prepared-statement-cache-max-size: 256  # Cache prepared statements
-  pipelining-enabled: true          # Enable query pipelining
-  pipelining-limit: 400             # Max pipelined queries
-  event-loop-size: 32               # Match vertx event-loops-pool-size
-  tcp-keep-alive: true              # Detect dead connections
-  tcp-no-delay: true                # Reduce latency
-  pool-cleaner-enabled: true        # Clean idle connections
-  pool-cleaner-interval: 60000      # Clean every minute
+#pool:
+#  max-size: 200                      # Max connections
+#  connection-timeout: 5000          # 5 seconds to acquire connection
+#  idle-timeout: 6000000              # 10 minutes idle before closing
+#  max-lifetime: 18000000             # 30 minutes max connection lifetime
+#  acquire-increment: 4              # Connections to acquire at once
+#  prepared-statement-cache-max-size: 256  # Cache prepared statements
+#  pipelining-enabled: true          # Enable query pipelining
+#  pipelining-limit: 400             # Max pipelined queries
+#  event-loop-size: 32               # Match vertx event-loops-pool-size
+#  tcp-keep-alive: true              # Detect dead connections
+#  tcp-no-delay: true                # Reduce latency
+#  pool-cleaner-enabled: true        # Clean idle connections
+#  pool-cleaner-interval: 60000      # Clean every minute
 
 
 mp:

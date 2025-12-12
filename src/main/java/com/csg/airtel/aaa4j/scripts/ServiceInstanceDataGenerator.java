@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * - Batch processing for optimal performance
  * - Progress reporting and error handling
  */
-//todo too slow data ServiceInstanceDataGenerator need to prefer implementation
+//todo data only insert SERVICE_INSTANCE table no  insert BUCKET_INSTANCE
 @ApplicationScoped
 public class ServiceInstanceDataGenerator {
 
@@ -38,12 +38,12 @@ public class ServiceInstanceDataGenerator {
     @Inject
      ReactiveRedisDataSource reactiveRedisDataSource;
     // Configuration constants - OPTIMIZED FOR HIGH THROUGHPUT
-    private static final int SERVICES_PER_USER = 3;
+    private static final int SERVICES_PER_USER = 2;
     private static final int BATCH_SIZE = 5000; // Increased from 1000 for better throughput
     private static final int BUCKET_BATCH_SIZE = 10000; // Increased from 2000 for larger batch inserts
-    private static final int PROGRESS_INTERVAL = 5000; // Less frequent logging
+    private static final int PROGRESS_INTERVAL = 20000; // Less frequent logging
     private static final int CONCURRENT_BATCHES = 10; // Increased from 1 for parallel processing
-    private static final int BUCKET_CONCURRENT_BATCHES = 20; // Increased from 1 for higher bucket insert concurrency
+    private static final int BUCKET_CONCURRENT_BATCHES = 10; // Increased from 1 for higher bucket insert concurrency
 
     // SERVICE_INSTANCE constants
     private static final String[] PLAN_IDS = {
@@ -300,8 +300,8 @@ public class ServiceInstanceDataGenerator {
 
         return client.preparedQuery(sql)
                 .executeBatch(tuples)
-                .map(result -> serviceIds)
-                .onFailure().retry().atMost(3);
+                .map(result -> serviceIds);
+
     }
 
     /**
@@ -319,7 +319,7 @@ public class ServiceInstanceDataGenerator {
         return Multi.createFrom().range(0, serviceRecords.size())
                 .onItem().transformToMulti(i -> {
                     long serviceId = serviceIds.get(i);
-                    int bucketCount = random.nextInt(3) + 2; // 2-5 buckets per service
+                    int bucketCount = random.nextInt(1) + 1;  // 2-5 buckets per service
 
                     return Multi.createFrom().range(0, bucketCount)
                         .map(j -> createBucketInstanceRecord(serviceId, j + 1, bucketIdCounter.incrementAndGet()));
@@ -404,7 +404,7 @@ public class ServiceInstanceDataGenerator {
         }
 
         // For very large chunks, split into sub-batches to avoid SQL statement size limits
-        int subBatchSize = Math.min(1000, chunk.size());
+        int subBatchSize = Math.min(500, chunk.size());
         AtomicInteger totalInserted = new AtomicInteger(0);
 
         return Multi.createFrom().iterable(chunk)
@@ -461,8 +461,8 @@ public class ServiceInstanceDataGenerator {
 
         return client.preparedQuery(sql.toString())
                 .execute(Tuple.from(values))
-                .map(result -> records.size())
-                .onFailure().retry().atMost(3);
+                .map(result -> records.size());
+
     }
 
 
@@ -559,24 +559,17 @@ public class ServiceInstanceDataGenerator {
     }
     public Uni<List<String>> getUserData() {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
-        if (log.isDebugEnabled()) {
-            log.debug("Retrieving user data from cache");
-        }
         log.info("Retrieving user data from cache");
 
         return reactiveRedisDataSource.value(String.class)
                 .get("usernames")
                 .onItem().transform(value -> {
                     if (value == null) {
-                        if (log.isDebugEnabled()) {
-                            log.debug("No user data found in cache");
-                        }
                         log.info("No user data found in cache, will fetch from database");
-                        return Collections.emptyList();
+                        return Collections.<String>emptyList(); // Explicit type
                     }
 
                     try {
-                        // Convert the JSON string back to JsonArray
                         JsonArray jsonArray = new JsonArray(value);
                         List<String> userNames = new ArrayList<>();
 
@@ -593,9 +586,9 @@ public class ServiceInstanceDataGenerator {
 
                     } catch (Exception e) {
                         log.errorf(e, "Failed to parse cached user data: %s", e.getMessage());
-                        return Collections.emptyList();
+                        return Collections.<String>emptyList(); // Explicit type
                     }
                 })
-                .onFailure().recoverWithNull().replaceWith(Collections.emptyList());
+                .onFailure().recoverWithItem(Collections.<String>emptyList()); // Explicit type
     }
 }
