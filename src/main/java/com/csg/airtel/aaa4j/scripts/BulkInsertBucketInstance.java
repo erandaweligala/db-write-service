@@ -58,14 +58,13 @@ public class BulkInsertBucketInstance {
      */
     public Uni<BulkInsertResult> executeBulkInsert() {
         log.info("Starting BUCKET_INSTANCE bulk insert from SERVICE_INSTANCE table");
-        Instant startTime = Instant.now();
 
         return fetchServiceInstanceCount()
                 .chain(totalServices -> {
                     log.infof("Found %d SERVICE_INSTANCE records", totalServices);
                     log.infof("Will create %d BUCKET_INSTANCE records (1:1 ratio)", totalServices);
 
-                    return processBucketInserts(totalServices, startTime);
+                    return processBucketInserts(totalServices);
                 });
     }
 
@@ -77,14 +76,13 @@ public class BulkInsertBucketInstance {
      */
     public Uni<BulkInsertResult> executeBulkInsert(String status) {
         log.infof("Starting BUCKET_INSTANCE bulk insert for SERVICE_INSTANCE with status: %s", status);
-        Instant startTime = Instant.now();
 
         return fetchServiceInstanceCountByStatus(status)
                 .chain(totalServices -> {
                     log.infof("Found %d SERVICE_INSTANCE records with status '%s'", totalServices, status);
                     log.infof("Will create %d BUCKET_INSTANCE records", totalServices);
 
-                    return processBucketInsertsWithFilter(totalServices, status, startTime);
+                    return processBucketInsertsWithFilter(totalServices, status);
                 });
     }
 
@@ -127,13 +125,13 @@ public class BulkInsertBucketInstance {
     /**
      * Process bucket inserts for all SERVICE_INSTANCE records
      */
-    //todo Expected 1 argument but found 2
-    private Uni<BulkInsertResult> processBucketInserts(Long totalServices, Instant startTime) {
+    private Uni<BulkInsertResult> processBucketInserts(Long totalServices) {
         if (totalServices == 0) {
             log.warn("No SERVICE_INSTANCE records found, nothing to insert");
             return Uni.createFrom().item(new BulkInsertResult(0, 0, Duration.ZERO));
         }
 
+        Instant startTime = Instant.now();
         AtomicInteger insertedCount = new AtomicInteger(0);
         AtomicInteger failedCount = new AtomicInteger(0);
         AtomicLong bucketIdCounter = new AtomicLong(System.currentTimeMillis() % 1000000);
@@ -181,14 +179,13 @@ public class BulkInsertBucketInstance {
     /**
      * Process bucket inserts with status filter
      */
-
-    //todo Expected 1 argument but found 2
-    private Uni<BulkInsertResult> processBucketInsertsWithFilter(Long totalServices, String status, Instant startTime) {
+    private Uni<BulkInsertResult> processBucketInsertsWithFilter(Long totalServices, String status) {
         if (totalServices == 0) {
             log.warnf("No SERVICE_INSTANCE records found with status '%s', nothing to insert", status);
             return Uni.createFrom().item(new BulkInsertResult(0, 0, Duration.ZERO));
         }
 
+        Instant startTime = Instant.now();
         AtomicInteger insertedCount = new AtomicInteger(0);
         AtomicInteger failedCount = new AtomicInteger(0);
         AtomicLong bucketIdCounter = new AtomicLong(System.currentTimeMillis() % 1000000);
