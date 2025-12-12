@@ -24,13 +24,12 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * Features:
  * - Fetches usernames from AAA_USER table
- * - Creates 3 SERVICE_INSTANCE records per username
- * - Creates multiple BUCKET_INSTANCE records per SERVICE_INSTANCE (one-to-many relationship)
+ * - Creates 2 SERVICE_INSTANCE records per username
+ * - Creates 1 BUCKET_INSTANCE record per SERVICE_INSTANCE (1:1 relationship)
  * - Generates realistic test data with specified distributions
- * - Batch processing for optimal performance
+ * - Batch processing for optimal performance using executeBatch to avoid Oracle bind variable limits
  * - Progress reporting and error handling
  */
-//todo data only insert SERVICE_INSTANCE table no  insert BUCKET_INSTANCE
 @ApplicationScoped
 public class ServiceInstanceDataGenerator {
 
@@ -319,7 +318,7 @@ public class ServiceInstanceDataGenerator {
         return Multi.createFrom().range(0, serviceRecords.size())
                 .onItem().transformToMulti(i -> {
                     long serviceId = serviceIds.get(i);
-                    int bucketCount = random.nextInt(1) + 1;  // 2-5 buckets per service
+                    int bucketCount = 1;  // 1 bucket per service (1:1 ratio)
 
                     return Multi.createFrom().range(0, bucketCount)
                         .map(j -> createBucketInstanceRecord(serviceId, j + 1, bucketIdCounter.incrementAndGet()));
@@ -418,24 +417,21 @@ public class ServiceInstanceDataGenerator {
     }
 
     /**
-     * Direct batch insert using INSERT ALL for BUCKET_INSTANCE
+     * Direct batch insert using executeBatch for BUCKET_INSTANCE
+     * Uses executeBatch with individual INSERT statements to avoid Oracle INSERT ALL bind variable limitations
      */
     private Uni<Integer> insertBucketBatchDirect(List<BucketInstanceRecord> records) {
-        StringBuilder sql = new StringBuilder("INSERT ALL ");
-
-        String columns = "(ID, BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
+        String sql = "INSERT INTO BUCKET_INSTANCE " +
+                "(ID, BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
                 "CONSUMPTION_LIMIT, CONSUMPTION_LIMIT_WINDOW, CURRENT_BALANCE, EXPIRATION, " +
                 "INITIAL_BALANCE, MAX_CARRY_FORWARD, PRIORITY, RULE, SERVICE_ID, TIME_WINDOW, " +
-                "TOTAL_CARRY_FORWARD, USAGE, UPDATED_AT, IS_UNLIMITED)";
+                "TOTAL_CARRY_FORWARD, USAGE, UPDATED_AT, IS_UNLIMITED) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-        String placeholders = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        List<Object> values = new ArrayList<>(records.size() * 19);
+        List<Tuple> tuples = new ArrayList<>(records.size());
 
         for (BucketInstanceRecord record : records) {
-            sql.append("INTO BUCKET_INSTANCE ").append(columns)
-               .append(" VALUES ").append(placeholders).append(" ");
-
+            List<Object> values = new ArrayList<>(19);
             values.add(record.id);
             values.add(record.bucketId);
             values.add(record.bucketType);
@@ -455,14 +451,13 @@ public class ServiceInstanceDataGenerator {
             values.add(record.usage);
             values.add(record.updatedAt);
             values.add(record.isUnlimited);
+
+            tuples.add(Tuple.from(values));
         }
 
-        sql.append("SELECT * FROM DUAL");
-
-        return client.preparedQuery(sql.toString())
-                .execute(Tuple.from(values))
+        return client.preparedQuery(sql)
+                .executeBatch(tuples)
                 .map(result -> records.size());
-
     }
 
 
