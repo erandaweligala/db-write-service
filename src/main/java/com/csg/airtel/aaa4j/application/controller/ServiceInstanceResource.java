@@ -12,21 +12,17 @@ import org.jboss.logging.Logger;
 import java.util.Map;
 
 /**
- * REST API for SERVICE_INSTANCE and BUCKET_INSTANCE data generation.
+ * REST API for SERVICE_INSTANCE data generation.
  *
  * This controller provides endpoints to:
- * - Generate test data for SERVICE_INSTANCE and BUCKET_INSTANCE tables
+ * - Generate test data for SERVICE_INSTANCE table only
  * - Each username from AAA_USER gets 2 SERVICE_INSTANCE records
- * - Each SERVICE_INSTANCE gets 1 BUCKET_INSTANCE record (1:1 relationship)
  *
  * Data Generation Rules:
  * - SERVICE_INSTANCE.USERNAME = AAA_USER.USER_NAME
  * - SERVICE_INSTANCE.SERVICE_START_DATE: 5% future, 40% today, 55% yesterday or earlier
  * - SERVICE_INSTANCE.EXPIRY_DATE: 50% before today, 50% after today
  * - SERVICE_INSTANCE.PLAN_ID: Random from predefined list
- * - BUCKET_INSTANCE.INITIAL_BALANCE: > 9,999,999,999
- * - BUCKET_INSTANCE.TIME_WINDOW: 00-08, 00-24, 00-18, or 18-24
- * - BUCKET_INSTANCE.IS_UNLIMITED: 0 or 1
  */
 @Path("/api/service-instance")
 @Produces(MediaType.APPLICATION_JSON)
@@ -43,19 +39,17 @@ public class ServiceInstanceResource {
     }
 
     /**
-     * Generate SERVICE_INSTANCE and BUCKET_INSTANCE data for all users in AAA_USER.
+     * Generate SERVICE_INSTANCE data for all users in AAA_USER.
      *
      * POST /api/service-instance/generate
      *
      * This will:
      * 1. Fetch all usernames from AAA_USER table
      * 2. Create 2 SERVICE_INSTANCE records per username
-     * 3. Create 1 BUCKET_INSTANCE record per SERVICE_INSTANCE
      *
      * Response:
      * {
      *   "serviceInstancesCreated": 300,
-     *   "bucketInstancesCreated": 300,
      *   "failed": 0,
      *   "durationMs": 5432,
      *   "durationFormatted": "5s"
@@ -64,7 +58,7 @@ public class ServiceInstanceResource {
     @POST
     @Path("/generate")
     public Uni<Response> generateData() {
-        log.info("Starting SERVICE_INSTANCE and BUCKET_INSTANCE data generation via API");
+        log.info("Starting SERVICE_INSTANCE data generation via API");
 
         return dataGenerator.generateData()
                 .map(result -> Response.ok(toResponse(result)).build())
@@ -87,16 +81,14 @@ public class ServiceInstanceResource {
      * Returns:
      * - Number of users in AAA_USER
      * - Expected number of SERVICE_INSTANCE records (users * 2)
-     * - Expected number of BUCKET_INSTANCE records (services * 1)
      */
     @GET
     @Path("/info")
     public Uni<Response> getInfo() {
         return dataGenerator.generateData()
                 .map(result -> Response.ok(Map.of(
-                        "description", "SERVICE_INSTANCE and BUCKET_INSTANCE Data Generator",
+                        "description", "SERVICE_INSTANCE Data Generator",
                         "servicesPerUser", 2,
-                        "bucketsPerService", 1,
                         "serviceStartDateDistribution", Map.of(
                                 "future", "5%",
                                 "today", "40%",
@@ -106,13 +98,11 @@ public class ServiceInstanceResource {
                                 "expired", "50%",
                                 "valid", "50%"
                         ),
-                        "planIds", "100COMBO182-192",
-                        "bucketInitialBalance", "> 9,999,999,999",
-                        "timeWindows", "00-08, 00-24, 00-18, 18-24"
+                        "planIds", "100COMBO182-192"
                 )).build())
                 .onFailure().recoverWithItem(e ->
                     Response.ok(Map.of(
-                            "description", "SERVICE_INSTANCE and BUCKET_INSTANCE Data Generator",
+                            "description", "SERVICE_INSTANCE Data Generator",
                             "status", "Not yet executed"
                     )).build()
                 );
@@ -121,7 +111,6 @@ public class ServiceInstanceResource {
     private Map<String, Object> toResponse(GenerationResult result) {
         return Map.of(
                 "serviceInstancesCreated", result.serviceInstancesCreated(),
-                "bucketInstancesCreated", result.bucketInstancesCreated(),
                 "failed", result.failed(),
                 "durationMs", result.duration().toMillis(),
                 "durationFormatted", formatDuration(result.duration())

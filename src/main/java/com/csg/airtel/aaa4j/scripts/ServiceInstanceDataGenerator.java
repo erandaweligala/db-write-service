@@ -20,12 +20,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Data Generator for SERVICE_INSTANCE and BUCKET_INSTANCE tables.
+ * Data Generator for SERVICE_INSTANCE table only.
  *
  * Features:
  * - Fetches usernames from AAA_USER table
  * - Creates 2 SERVICE_INSTANCE records per username
- * - Creates 1 BUCKET_INSTANCE record per SERVICE_INSTANCE (1:1 relationship)
  * - Generates realistic test data with specified distributions
  * - Batch processing for optimal performance using executeBatch to avoid Oracle bind variable limits
  * - Progress reporting and error handling
@@ -39,10 +38,8 @@ public class ServiceInstanceDataGenerator {
     // Configuration constants - OPTIMIZED FOR HIGH THROUGHPUT
     private static final int SERVICES_PER_USER = 2;
     private static final int BATCH_SIZE = 5000; // Increased from 1000 for better throughput
-    private static final int BUCKET_BATCH_SIZE = 10000; // Increased from 2000 for larger batch inserts
     private static final int PROGRESS_INTERVAL = 20000; // Less frequent logging
     private static final int CONCURRENT_BATCHES = 4; // Increased from 1 for parallel processing
-    private static final int BUCKET_CONCURRENT_BATCHES = 6; // Increased from 1 for higher bucket insert concurrency
 
     // SERVICE_INSTANCE constants
     private static final String[] PLAN_IDS = {
@@ -54,12 +51,6 @@ public class ServiceInstanceDataGenerator {
     private static final String[] PLAN_TYPES = {"PREPAID", "POSTPAID", "HYBRID"};
     private static final String[] STATUSES = {"Active", "Suspend", "Inactive"};
     private static final String[] BILLING_TYPES = {"MONTHLY", "QUARTERLY", "YEARLY", "USAGE_BASED"};
-
-    // BUCKET_INSTANCE constants
-    private static final String[] TIME_WINDOWS = {"00-08", "00-24", "00-18", "18-24"};
-    private static final String[] CONSUMTION_LIMIT = {"1", "7", "30"};
-    private static final String[] BUCKET_TYPES = {"DATA", "COMBO"};
-    private static final String[] RULES = {"100Mbps", "200Mbps", "300Kbps", "1Gbps", "100kbps"};
 
     private final Pool client;
     private final Random random = new Random();
@@ -74,7 +65,7 @@ public class ServiceInstanceDataGenerator {
      */
 
     public Uni<GenerationResult> generateData() {
-        log.info("Starting SERVICE_INSTANCE and BUCKET_INSTANCE data generation");
+        log.info("Starting SERVICE_INSTANCE data generation");
         Instant startTime = Instant.now();
 
         return fetchUsernames()
@@ -125,11 +116,8 @@ public class ServiceInstanceDataGenerator {
     /**
      * Generate SERVICE_INSTANCE records for all users - OPTIMIZED
      */
-
-    //todo only insert SERVICE_INSTANCE table only no need to insert data Bucket_instance table
     private Uni<GenerationResult> generateServiceInstances(List<String> usernames, Instant startTime) {
         AtomicInteger serviceCount = new AtomicInteger(0);
-        AtomicInteger bucketCount = new AtomicInteger(0);
         AtomicInteger failedCount = new AtomicInteger(0);
         AtomicLong serviceIdCounter = new AtomicLong(System.currentTimeMillis() % 1000000);
 
@@ -150,31 +138,27 @@ public class ServiceInstanceDataGenerator {
                 .capDemandsTo(CONCURRENT_BATCHES)
                 .onItem().transformToUniAndMerge(batch ->
                     insertServiceInstanceBatch(batch)
-                        .chain(serviceIds -> insertBucketInstancesForServices(batch, serviceIds))
-                        .onItem().invoke(buckets -> {
+                        .onItem().invoke(() -> {
                             int services = serviceCount.addAndGet(batch.size());
-                            int totalBuckets = bucketCount.addAndGet(buckets);
 
                             if (services % PROGRESS_INTERVAL == 0 || services == totalServices) {
                                 Duration elapsed = Duration.between(startTime, Instant.now());
                                 double rps = services * 1000.0 / Math.max(1, elapsed.toMillis());
-                                log.infof("Progress: %d/%d services (%.1f%%) | %d buckets | %.0f svc/s",
-                                        services, totalServices, (services * 100.0 / totalServices),
-                                        totalBuckets, rps);
+                                log.infof("Progress: %d/%d services (%.1f%%) | %.0f svc/s",
+                                        services, totalServices, (services * 100.0 / totalServices), rps);
                             }
                         })
                         .onFailure().invoke(e -> {
                             failedCount.addAndGet(batch.size());
                             log.errorf(e, "Batch insert failed: %s", e.getMessage());
                         })
-                        .onFailure().recoverWithItem(0)
+                        .onFailure().recoverWithItem(Collections.emptyList())
                 )
                 .collect().asList()
                 .map(results -> {
                     Duration totalDuration = Duration.between(startTime, Instant.now());
                     return new GenerationResult(
                             serviceCount.get(),
-                            bucketCount.get(),
                             failedCount.get(),
                             totalDuration
                     );
@@ -305,166 +289,6 @@ public class ServiceInstanceDataGenerator {
 
     }
 
-    /**
-     * Insert BUCKET_INSTANCE records for each SERVICE_INSTANCE - OPTIMIZED
-     * Generates bucket records on-the-fly to reduce memory footprint
-     */
-    private Uni<Integer> insertBucketInstancesForServices(
-            List<ServiceInstanceRecord> serviceRecords,
-            List<Long> serviceIds) {
-
-        AtomicLong bucketIdCounter = new AtomicLong(System.currentTimeMillis() % 1000000);
-        AtomicInteger totalInserted = new AtomicInteger(0);
-
-        // Stream-based processing: generate and insert buckets in smaller chunks
-        return Multi.createFrom().range(0, serviceRecords.size())
-                .onItem().transformToMulti(i -> {
-                    long serviceId = serviceIds.get(i);
-                    int bucketCount = 1;  // 1 bucket per service (1:1 ratio)
-
-                    return Multi.createFrom().range(0, bucketCount)
-                        .map(j -> createBucketInstanceRecord(serviceId, j + 1, bucketIdCounter.incrementAndGet()));
-                })
-                .merge()
-                .group().intoLists().of(BUCKET_BATCH_SIZE)
-                .capDemandsTo(BUCKET_CONCURRENT_BATCHES)
-                .onItem().transformToUniAndMerge(chunk ->
-                    insertBucketChunk(chunk)
-                        .onItem().invoke(count -> totalInserted.addAndGet(count))
-                        .onFailure().recoverWithItem(0)
-                )
-                .collect().asList()
-                .map(results -> totalInserted.get());
-    }
-
-    /**
-     * Create a BUCKET_INSTANCE record with generated data
-     */
-    private BucketInstanceRecord createBucketInstanceRecord(long serviceId, int priority,long id) {
-        String bucketId = "BUCKET-" + serviceId + "-" + priority;
-
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime expiration = now.plusDays(random.nextInt(365) + 30);
-
-        int isUnlimited = random.nextInt(10) < 2 ? 1 : 0; // 20% unlimited
-
-        // If unlimited = 1, set initialBalance and currentBalance to null
-        Long initialBalance = null;
-        Long currentBalance = null;
-        long consumptionLimit = 0L;
-        long maxCarryForward = 0L;
-        long totalCarryForward = 0L;
-        long usage = 0L;
-
-        if (isUnlimited == 0) {
-            // Limited bucket: generate balance values
-            initialBalance = 10_000_000_000L + random.nextLong(90_000_000_000L); // > 9999999999
-            currentBalance = initialBalance - random.nextLong(initialBalance / 10);
-            consumptionLimit = initialBalance / 10;
-            maxCarryForward = initialBalance / 5;
-            totalCarryForward = random.nextLong(initialBalance / 20);
-            usage = random.nextLong(initialBalance / 5);
-        }
-
-        return new BucketInstanceRecord(
-                id,
-                bucketId,                                           // BUCKET_ID
-                BUCKET_TYPES[random.nextInt(BUCKET_TYPES.length)], // BUCKET_TYPE
-                random.nextInt(2),                                  // CARRY_FORWARD (0 or 1)
-                random.nextInt(90) + 30,                            // CARRY_FORWARD_VALIDITY
-                consumptionLimit,                                   // CONSUMPTION_LIMIT
-                CONSUMTION_LIMIT[random.nextInt(CONSUMTION_LIMIT.length)],  // CONSUMPTION_LIMIT_WINDOW
-                currentBalance,                                     // CURRENT_BALANCE (NULL if unlimited)
-                expiration,                                         // EXPIRATION
-                initialBalance,                                     // INITIAL_BALANCE (NULL if unlimited)
-                maxCarryForward,                                    // MAX_CARRY_FORWARD
-                priority,                                           // PRIORITY
-                RULES[random.nextInt(RULES.length)],                // RULE
-                String.valueOf(serviceId),                          // SERVICE_ID (FK)
-                TIME_WINDOWS[random.nextInt(TIME_WINDOWS.length)],  // TIME_WINDOW
-                totalCarryForward,                                  // TOTAL_CARRY_FORWARD
-                usage,                                              // USAGE
-                now,                                                // UPDATED_AT
-                isUnlimited                                         // IS_UNLIMITED
-        );
-    }
-
-
-    /**
-     * Insert a single chunk of BUCKET_INSTANCE records using INSERT ALL - OPTIMIZED
-     * Uses batch insert with parallel execution for maximum throughput
-     */
-    private Uni<Integer> insertBucketChunk(List<BucketInstanceRecord> chunk) {
-        if (chunk.isEmpty()) {
-            return Uni.createFrom().item(0);
-        }
-
-        // Optimize chunk size: use INSERT ALL for larger batches, individual inserts for small ones
-        if (chunk.size() <= 100) {
-            return insertBucketBatchDirect(chunk);
-        }
-
-        // For very large chunks, split into sub-batches to avoid SQL statement size limits
-        int subBatchSize = Math.min(500, chunk.size());
-        AtomicInteger totalInserted = new AtomicInteger(0);
-
-        return Multi.createFrom().iterable(chunk)
-                .group().intoLists().of(subBatchSize)
-                .onItem().transformToUniAndConcatenate(subBatch ->
-                    insertBucketBatchDirect(subBatch)
-                        .onItem().invoke(totalInserted::addAndGet)
-                )
-                .collect().asList()
-                .map(results -> totalInserted.get());
-    }
-
-    /**
-     * Direct batch insert using executeBatch for BUCKET_INSTANCE
-     * Uses executeBatch with individual INSERT statements to avoid Oracle INSERT ALL bind variable limitations
-     */
-    private Uni<Integer> insertBucketBatchDirect(List<BucketInstanceRecord> records) {
-        String sql = "INSERT INTO BUCKET_INSTANCE " +
-                "(ID, BUCKET_ID, BUCKET_TYPE, CARRY_FORWARD, CARRY_FORWARD_VALIDITY, " +
-                "CONSUMPTION_LIMIT, CONSUMPTION_LIMIT_WINDOW, CURRENT_BALANCE, EXPIRATION, " +
-                "INITIAL_BALANCE, MAX_CARRY_FORWARD, PRIORITY, RULE, SERVICE_ID, TIME_WINDOW, " +
-                "TOTAL_CARRY_FORWARD, USAGE, UPDATED_AT, IS_UNLIMITED) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        List<Tuple> tuples = new ArrayList<>(records.size());
-
-        for (BucketInstanceRecord record : records) {
-            List<Object> values = new ArrayList<>(19);
-            values.add(record.id);
-            values.add(record.bucketId);
-            values.add(record.bucketType);
-            values.add(record.carryForward);
-            values.add(record.carryForwardValidity);
-            values.add(record.consumptionLimit);
-            values.add(record.consumptionLimitWindow);
-            values.add(record.currentBalance);
-            values.add(record.expiration);
-            values.add(record.initialBalance);
-            values.add(record.maxCarryForward);
-            values.add(record.priority);
-            values.add(record.rule);
-            values.add(record.serviceId);
-            values.add(record.timeWindow);
-            values.add(record.totalCarryForward);
-            values.add(record.usage);
-            values.add(record.updatedAt);
-            values.add(record.isUnlimited);
-
-            tuples.add(Tuple.from(values));
-        }
-
-        return client.preparedQuery(sql)
-                .executeBatch(tuples)
-                .map(result -> records.size());
-    }
-
-
-
-    
     // Record classes for data structures
     private record ServiceInstanceRecord(
             long id,
@@ -487,42 +311,19 @@ public class ServiceInstanceDataGenerator {
             int cycleDate
     ) {}
 
-    private record BucketInstanceRecord(
-            long id,
-            String bucketId,
-            String bucketType,
-            int carryForward,
-            int carryForwardValidity,
-            long consumptionLimit,
-            String consumptionLimitWindow,
-            Long currentBalance,
-            LocalDateTime expiration,
-            Long initialBalance,
-            long maxCarryForward,
-            int priority,
-            String rule,
-            String serviceId,
-            String timeWindow,
-            long totalCarryForward,
-            long usage,
-            LocalDateTime updatedAt,
-            int isUnlimited
-    ) {}
-
     /**
      * Result record for data generation
      */
     public record GenerationResult(
             int serviceInstancesCreated,
-            int bucketInstancesCreated,
             int failed,
             Duration duration
     ) {
         @Override
         public String toString() {
             return String.format(
-                    "GenerationResult{services=%d, buckets=%d, failed=%d, duration=%s}",
-                    serviceInstancesCreated, bucketInstancesCreated, failed, formatDuration(duration)
+                    "GenerationResult{services=%d, failed=%d, duration=%s}",
+                    serviceInstancesCreated, failed, formatDuration(duration)
             );
         }
 
