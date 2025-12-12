@@ -19,16 +19,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Data Generator for SERVICE_INSTANCE table only.
+ * Data Generator for BUCKET_INSTANCE table.
  *
  * Features:
- * - Fetches usernames from AAA_USER table
- * - Creates 2 SERVICE_INSTANCE records per username
+ * - Fetches service IDs from SERVICE_INSTANCE table
+ * - Creates BUCKET_INSTANCE records for each service
+ * - Uses database sequence (BUCKET_INSTANCE_SEQ) for unique ID generation in batch operations
  * - Generates realistic test data with specified distributions
  * - Batch processing for optimal performance using executeBatch to avoid Oracle bind variable limits
  * - Progress reporting and error handling
  */
-//todo need to implement uniqe ID genaration batch insert
 @ApplicationScoped
 public class BucketInstanceDataGenerator {
 
@@ -53,12 +53,6 @@ public class BucketInstanceDataGenerator {
     @Inject
     public BucketInstanceDataGenerator(Pool client) {
         this.client = client;
-    }
-
-    private static final AtomicLong UNIQUE_ID_GENERATOR = new AtomicLong(System.currentTimeMillis());
-
-    private long generateUniqueId() {
-        return UNIQUE_ID_GENERATOR.incrementAndGet();
     }
     public Multi<Long> fetchAllIds() {
         return client.query("SELECT ID FROM SERVICE_INSTANCE ORDER BY ID")
@@ -133,42 +127,51 @@ public class BucketInstanceDataGenerator {
     }
 
     /**
-     * Generate SERVICE_INSTANCE records for all users - OPTIMIZED
+     * Generate BUCKET_INSTANCE records for all services - OPTIMIZED
+     * Uses database sequence (BUCKET_INSTANCE_SEQ) for unique ID generation
      */
     private Uni<GenerationResult> generateServiceInstances(List<Long> serviceIds, Instant startTime) {
         AtomicInteger serviceCount = new AtomicInteger(0);
         AtomicInteger failedCount = new AtomicInteger(0);
 
-
         int totalServices = serviceIds.size() * BUCKET_INSTANCE;
         int totalBatches = (totalServices + BATCH_SIZE - 1) / BATCH_SIZE;
 
-        log.infof("Processing %d service instances in %d batches with %d concurrent workers",
+        log.infof("Processing %d bucket instances in %d batches with %d concurrent workers",
                 totalServices, totalBatches, CONCURRENT_BATCHES);
 
         // Stream processing: generate records on-the-fly instead of pre-creating all
         return Multi.createFrom().iterable(serviceIds)
                 .onItem().transformToMulti(serviceId ->
                     Multi.createFrom().range(0, BUCKET_INSTANCE)
-                        .map(i -> createBucketInstanceRecord(serviceId, generateUniqueId()))
+                        .map(i -> serviceId) // Just pass through serviceId
                 )
                 .merge()
                 .group().intoLists().of(BATCH_SIZE)
                 .capDemandsTo(CONCURRENT_BATCHES)
-                .onItem().transformToUniAndMerge(batch ->
-                    insertServiceInstanceBatch(batch)
+                .onItem().transformToUniAndMerge(serviceIdBatch ->
+                    // Fetch batch of IDs from sequence
+                    generateIds(serviceIdBatch.size())
+                        .chain(ids -> {
+                            // Create batch records with generated IDs
+                            List<BucketInstanceRecord> batch = new ArrayList<>(serviceIdBatch.size());
+                            for (int i = 0; i < serviceIdBatch.size(); i++) {
+                                batch.add(createBucketInstanceRecord(serviceIdBatch.get(i), ids.get(i)));
+                            }
+                            return insertServiceInstanceBatch(batch);
+                        })
                         .onItem().invoke(() -> {
-                            int services = serviceCount.addAndGet(batch.size());
+                            int services = serviceCount.addAndGet(serviceIdBatch.size());
 
                             if (services % PROGRESS_INTERVAL == 0 || services == totalServices) {
                                 Duration elapsed = Duration.between(startTime, Instant.now());
                                 double rps = services * 1000.0 / Math.max(1, elapsed.toMillis());
-                                log.infof("Progress: %d/%d services (%.1f%%) | %.0f svc/s",
+                                log.infof("Progress: %d/%d buckets (%.1f%%) | %.0f bucket/s",
                                         services, totalServices, (services * 100.0 / totalServices), rps);
                             }
                         })
                         .onFailure().invoke(e -> {
-                            failedCount.addAndGet(batch.size());
+                            failedCount.addAndGet(serviceIdBatch.size());
                             log.errorf(e, "Batch insert failed: %s", e.getMessage());
                         })
                         .onFailure().recoverWithItem(Collections.emptyList())
@@ -308,7 +311,7 @@ public class BucketInstanceDataGenerator {
     ) {}
 
     /**
-     * Result record for data generation
+     * Result record for bucket instance data generation
      */
     public record GenerationResult(
             int serviceInstancesCreated,
@@ -318,7 +321,7 @@ public class BucketInstanceDataGenerator {
         @Override
         public String toString() {
             return String.format(
-                    "GenerationResult{services=%d, failed=%d, duration=%s}",
+                    "GenerationResult{buckets=%d, failed=%d, duration=%s}",
                     serviceInstancesCreated, failed, formatDuration(duration)
             );
         }
@@ -385,17 +388,33 @@ public class BucketInstanceDataGenerator {
                 .onFailure().recoverWithItem(Collections.<Long>emptyList());
     }
 
+    /**
+     * Generate a batch of unique IDs from the database sequence.
+     * This method fetches multiple sequence values in a single database call for efficiency.
+     *
+     * @param batchSize Number of IDs to generate
+     * @return Uni containing a list of unique IDs
+     */
     private Uni<List<Long>> generateIds(int batchSize) {
-        String sql = "SELECT AAA.BUCKET_INSTANCE_SEQ.NEXTVAL FROM DUAL CONNECT BY LEVEL <= ?";
+        String sql = "SELECT BUCKET_INSTANCE_SEQ.NEXTVAL FROM DUAL CONNECT BY LEVEL <= ?";
         return client.preparedQuery(sql)
                 .execute(Tuple.of(batchSize))
                 .onItem().transform(rows -> {
-                    List<Long> ids = new ArrayList<>();
+                    List<Long> ids = new ArrayList<>(batchSize);
                     for (Row row : rows) {
                         ids.add(row.getLong(0));
                     }
+                    if (log.isDebugEnabled()) {
+                        log.debugf("Generated %d IDs from sequence: %d to %d",
+                                ids.size(),
+                                ids.isEmpty() ? 0 : ids.get(0),
+                                ids.isEmpty() ? 0 : ids.get(ids.size() - 1));
+                    }
                     return ids;
-                });
+                })
+                .onFailure().invoke(e ->
+                    log.errorf(e, "Failed to generate %d IDs from sequence: %s", batchSize, e.getMessage())
+                );
     }
 
 }
