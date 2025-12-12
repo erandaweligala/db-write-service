@@ -389,6 +389,7 @@ public class BulkInsertBucketInstance {
 
     /**
      * Insert a chunk of BUCKET_INSTANCE records using executeBatch
+     * Uses withConnection() to ensure the connection remains open for the entire batch operation
      */
     private Uni<Integer> insertBucketChunk(List<BucketInstanceRecord> records) {
         String sql = "INSERT INTO BUCKET_INSTANCE " +
@@ -425,11 +426,14 @@ public class BulkInsertBucketInstance {
             tuples.add(Tuple.from(values));
         }
 
-        return client.preparedQuery(sql)
-                .executeBatch(tuples)
-                .map(result -> records.size())
-                .onFailure()
-                .invoke(e -> log.errorf(e, "Failed to insert bucket chunk: %s", e.getMessage()));
+        // Use withConnection to ensure the connection is not closed during the batch operation
+        return client.withConnection(conn ->
+                conn.preparedQuery(sql)
+                        .executeBatch(tuples)
+                        .map(result -> records.size())
+        )
+        .onFailure()
+        .invoke(e -> log.errorf(e, "Failed to insert bucket chunk: %s", e.getMessage()));
     }
 
     /**
