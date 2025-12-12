@@ -8,8 +8,8 @@ quarkus:
     password: Aaa!89nky78D
     reactive:
       url: oracle:thin:@localhost:1522/ORCL
-      max-size: 20
-      event-loop-size: 8
+      max-size: 100
+      event-loop-size: 10
       idle-timeout: PT15M
       max-lifetime: PT15M
       cache-prepared-statements: true
@@ -18,12 +18,12 @@ quarkus:
       shared: false
       name: oracle-pool
       additional-properties:
-        oracle.jdbc.implicitStatementCacheSize: "250"
+        oracle.jdbc.implicitStatementCacheSize: "500"
         oracle.jdbc.ReadTimeout: "300000"                  # 5 minutes for large batch operations
         oracle.net.CONNECT_TIMEOUT: "30000"                # Increased to 30s for connection establishment
         oracle.net.READ_TIMEOUT: "300000"                  # Socket-level read timeout (5 minutes)
         oracle.jdbc.loginTimeout: "60"                     # Login timeout in seconds
-        oracle.jdbc.defaultRowPrefetch: "100"
+        oracle.jdbc.defaultRowPrefetch: "5000"
         oracle.net.keepAlive: "true"
   otel:
     enabled: false

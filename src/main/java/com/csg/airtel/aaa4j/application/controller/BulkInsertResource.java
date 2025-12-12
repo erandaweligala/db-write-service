@@ -1,10 +1,11 @@
 package com.csg.airtel.aaa4j.application.controller;
 
 import com.csg.airtel.aaa4j.infrastructure.CsvExportUtil.CsvExportResult;
+import com.csg.airtel.aaa4j.scripts.BucketInstanceDataGenerator;
 import com.csg.airtel.aaa4j.scripts.BulkInsertScript;
 import com.csg.airtel.aaa4j.scripts.BulkInsertScript.BulkInsertResult;
 import com.csg.airtel.aaa4j.scripts.BulkInsertScript.BulkInsertWithExportResult;
-import com.csg.airtel.aaa4j.scripts.BulkInsertBucketInstance;
+import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -46,13 +47,13 @@ public class BulkInsertResource {
     private static final String DEFAULT_TABLE = "AAA_USER";
 
     private final BulkInsertScript bulkInsertScript;
-    private final BulkInsertBucketInstance bulkInsertBucketInstance;
+    private final BucketInstanceDataGenerator bucketInstanceDataGenerator;
 
     @Inject
     public BulkInsertResource(BulkInsertScript bulkInsertScript,
-                              BulkInsertBucketInstance bulkInsertBucketInstance) {
+                            BucketInstanceDataGenerator bucketInstanceDataGenerator) {
         this.bulkInsertScript = bulkInsertScript;
-        this.bulkInsertBucketInstance = bulkInsertBucketInstance;
+        this.bucketInstanceDataGenerator = bucketInstanceDataGenerator;
     }
 
     /**
@@ -349,20 +350,35 @@ public class BulkInsertResource {
      *   "durationFormatted": "45.0s"
      * }
      */
-    @POST
-    @Path("/bucket-instances")
-    public Uni<Response> executeBucketInstanceBulkInsert() {
-        log.info("Starting BUCKET_INSTANCE bulk insert from SERVICE_INSTANCE via API");
-
-        return bulkInsertBucketInstance.executeBulkInsert()
-                .map(result -> Response.ok(toBucketInsertResponse(result)).build())
-                .onFailure().recoverWithItem(e -> {
-                    log.errorf(e, "BUCKET_INSTANCE bulk insert failed");
-                    return Response.serverError()
-                            .entity(Map.of("error", e.getMessage()))
-                            .build();
-                });
-    }
+//    @POST
+//    @Path("/bucket-instances")
+//    public Uni<Response> executeBucketInstanceBulkInsert() {
+//        log.info("Starting BUCKET_INSTANCE bulk insert from SERVICE_INSTANCE via API");
+//
+//        return bulkInsertBucketInstance.executeBulkInsert()
+//                .map(result -> Response.ok(toBucketInsertResponse(result)).build())
+//                .onFailure().recoverWithItem(e -> {
+//                    log.errorf(e, "BUCKET_INSTANCE bulk insert failed");
+//                    return Response.serverError()
+//                            .entity(Map.of("error", e.getMessage()))
+//                            .build();
+//                });
+//    }
+//
+//    @POST
+//    @Path("/bucket-instances/2")
+//    public Uni<Response> executeBucketInstanceBulkInsert2() {
+//        log.info("Starting BUCKET_INSTANCE bulk insert from SERVICE_INSTANCE via API");
+//
+//        return bucketInstanceDataGenerator.generateDataBucket()
+//                .map(result -> Response.ok(toBucketInsertResponse(null)).build())
+//                .onFailure().recoverWithItem(e -> {
+//                    log.errorf(e, "BUCKET_INSTANCE bulk insert failed");
+//                    return Response.serverError()
+//                            .entity(Map.of("error", e.getMessage()))
+//                            .build();
+//                });
+//    }
 
     /**
      * Execute bulk insert to BUCKET_INSTANCE table filtered by SERVICE_INSTANCE status.
@@ -373,38 +389,45 @@ public class BulkInsertResource {
      *
      * Valid status values: "Active", "Suspend", "Inactive"
      */
-    @POST
-    @Path("/bucket-instances/by-status")
-    public Uni<Response> executeBucketInstanceBulkInsertByStatus(BucketInstanceByStatusRequest request) {
-        if (request == null || request.status() == null || request.status().trim().isEmpty()) {
-            return Uni.createFrom().item(
-                    Response.status(Response.Status.BAD_REQUEST)
-                            .entity(Map.of("error", "Status parameter is required"))
-                            .build()
-            );
-        }
-
-        String status = request.status().trim();
-        log.infof("Starting BUCKET_INSTANCE bulk insert for SERVICE_INSTANCE with status: %s", status);
-
-        return bulkInsertBucketInstance.executeBulkInsert(status)
-                .map(result -> Response.ok(toBucketInsertResponse(result)).build())
-                .onFailure().recoverWithItem(e -> {
-                    log.errorf(e, "BUCKET_INSTANCE bulk insert by status failed");
-                    return Response.serverError()
-                            .entity(Map.of("error", e.getMessage()))
-                            .build();
-                });
-    }
-
-    private Map<String, Object> toBucketInsertResponse(BulkInsertBucketInstance.BulkInsertResult result) {
-        return Map.of(
-                "inserted", result.inserted(),
-                "failed", result.failed(),
-                "durationMs", result.duration().toMillis(),
-                "durationFormatted", formatDuration(result.duration())
-        );
-    }
+//    @POST
+//    @Path("/bucket-instances/by-status")
+//    public Uni<Response> executeBucketInstanceBulkInsertByStatus(BucketInstanceByStatusRequest request) {
+//        if (request == null || request.status() == null || request.status().trim().isEmpty()) {
+//            return Uni.createFrom().item(
+//                    Response.status(Response.Status.BAD_REQUEST)
+//                            .entity(Map.of("error", "Status parameter is required"))
+//                            .build()
+//            );
+//        }
+//
+//        String status = request.status().trim();
+//        log.infof("Starting BUCKET_INSTANCE bulk insert for SERVICE_INSTANCE with status: %s", status);
+//
+//        return bulkInsertBucketInstance.executeBulkInsert(status)
+//                .map(result -> Response.ok(toBucketInsertResponse(result)).build())
+//                .onFailure().recoverWithItem(e -> {
+//                    log.errorf(e, "BUCKET_INSTANCE bulk insert by status failed");
+//                    return Response.serverError()
+//                            .entity(Map.of("error", e.getMessage()))
+//                            .build();
+//                });
+//    }
+//
+//    private Map<String, Object> toBucketInsertResponse(BulkInsertBucketInstance.BulkInsertResult result) {
+//        return Map.of(
+//                "inserted", result.inserted(),
+//                "failed", result.failed(),
+//                "durationMs", result.duration().toMillis(),
+//                "durationFormatted", formatDuration(result.duration())
+//        );
+//    }
 
     public record BucketInstanceByStatusRequest(String status) {}
+
+    @GET
+    @Path("/ids")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Multi<Long> getAllIds() {
+        return bucketInstanceDataGenerator.fetchAllIds();
+    }
 }
