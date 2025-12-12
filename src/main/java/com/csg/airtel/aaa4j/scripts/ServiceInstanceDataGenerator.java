@@ -39,7 +39,7 @@ public class ServiceInstanceDataGenerator {
     private static final int SERVICES_PER_USER = 2;
     private static final int BATCH_SIZE = 5000; // Increased from 1000 for better throughput
     private static final int PROGRESS_INTERVAL = 20000; // Less frequent logging
-    private static final int CONCURRENT_BATCHES = 4; // Increased from 1 for parallel processing
+    private static final int CONCURRENT_BATCHES = 6; // Increased from 1 for parallel processing
 
     // SERVICE_INSTANCE constants
     private static final String[] PLAN_IDS = {
@@ -49,7 +49,7 @@ public class ServiceInstanceDataGenerator {
     };
 
     private static final String[] PLAN_TYPES = {"PREPAID", "POSTPAID", "HYBRID"};
-    private static final String[] STATUSES = {"Active", "Suspend", "Inactive"};
+    private static final String[] STATUSES = {"Active", "Inactive"};
     private static final String[] BILLING_TYPES = {"MONTHLY", "QUARTERLY", "YEARLY", "USAGE_BASED"};
 
     private final Pool client;
@@ -190,7 +190,7 @@ public class ServiceInstanceDataGenerator {
                 serviceId,
                 now,                                          // CREATED_AT
                 expiryDate,                                   // EXPIRY_DATE
-                1,                            // IS_GROUP (0 or 1)
+                0,                            // IS_GROUP (0 or 1)
                 nextCycleStartDate,                           // NEXT_CYCLE_START_DATE
                 planId,                                       // PLAN_ID
                 planName,                                     // PLAN_NAME
