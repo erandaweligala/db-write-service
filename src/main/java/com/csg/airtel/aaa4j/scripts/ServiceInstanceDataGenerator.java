@@ -260,26 +260,21 @@ public class ServiceInstanceDataGenerator {
 
     /**
      * Insert a batch of SERVICE_INSTANCE records - OPTIMIZED
-     * Pre-allocates collection sizes for better performance
+     * Uses executeBatch with individual INSERT statements to avoid Oracle INSERT ALL bind variable limitations
      */
     private Uni<List<Long>> insertServiceInstanceBatch(List<ServiceInstanceRecord> batch) {
-        StringBuilder sql = new StringBuilder(batch.size() * 200); // Pre-allocate approximate size
-        sql.append("INSERT ALL ");
-
-        String columns = "(ID, CREATED_AT, EXPIRY_DATE, IS_GROUP, NEXT_CYCLE_START_DATE, " +
+        String sql = "INSERT INTO SERVICE_INSTANCE " +
+                "(ID, CREATED_AT, EXPIRY_DATE, IS_GROUP, NEXT_CYCLE_START_DATE, " +
                 "PLAN_ID, PLAN_NAME, PLAN_TYPE, RECURRING_FLAG, REQUEST_ID, " +
                 "CYCLE_END_DATE, CYCLE_START_DATE, SERVICE_START_DATE, STATUS, UPDATED_AT, " +
-                "USERNAME, BILLING, CYCLE_DATE)";
+                "USERNAME, BILLING, CYCLE_DATE) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-        String placeholders = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        List<Object> values = new ArrayList<>(batch.size() * 18); // Pre-allocate exact size
+        List<Tuple> tuples = new ArrayList<>(batch.size());
         List<Long> serviceIds = new ArrayList<>(batch.size());
 
         for (ServiceInstanceRecord record : batch) {
-            sql.append("INTO SERVICE_INSTANCE ").append(columns)
-               .append(" VALUES ").append(placeholders).append(" ");
-
+            List<Object> values = new ArrayList<>(18);
             values.add(record.id);
             values.add(record.createdAt);
             values.add(record.expiryDate);
@@ -299,13 +294,12 @@ public class ServiceInstanceDataGenerator {
             values.add(record.billing);
             values.add(record.cycleDate);
 
+            tuples.add(Tuple.from(values));
             serviceIds.add(record.id);
         }
 
-        sql.append("SELECT * FROM DUAL");
-
-        return client.preparedQuery(sql.toString())
-                .execute(Tuple.from(values))
+        return client.preparedQuery(sql)
+                .executeBatch(tuples)
                 .map(result -> serviceIds)
                 .onFailure().retry().atMost(3);
     }
