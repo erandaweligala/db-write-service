@@ -16,8 +16,8 @@ import java.util.Map;
  *
  * This controller provides endpoints to:
  * - Generate test data for SERVICE_INSTANCE and BUCKET_INSTANCE tables
- * - Each username from AAA_USER gets 3 SERVICE_INSTANCE records
- * - Each SERVICE_INSTANCE gets 2-5 BUCKET_INSTANCE records (one-to-many relationship)
+ * - Each username from AAA_USER gets 2 SERVICE_INSTANCE records
+ * - Each SERVICE_INSTANCE gets 1 BUCKET_INSTANCE record (1:1 relationship)
  *
  * Data Generation Rules:
  * - SERVICE_INSTANCE.USERNAME = AAA_USER.USER_NAME
@@ -49,13 +49,13 @@ public class ServiceInstanceResource {
      *
      * This will:
      * 1. Fetch all usernames from AAA_USER table
-     * 2. Create 3 SERVICE_INSTANCE records per username
-     * 3. Create 2-5 BUCKET_INSTANCE records per SERVICE_INSTANCE
+     * 2. Create 2 SERVICE_INSTANCE records per username
+     * 3. Create 1 BUCKET_INSTANCE record per SERVICE_INSTANCE
      *
      * Response:
      * {
      *   "serviceInstancesCreated": 300,
-     *   "bucketInstancesCreated": 1050,
+     *   "bucketInstancesCreated": 300,
      *   "failed": 0,
      *   "durationMs": 5432,
      *   "durationFormatted": "5s"
@@ -86,8 +86,8 @@ public class ServiceInstanceResource {
      *
      * Returns:
      * - Number of users in AAA_USER
-     * - Expected number of SERVICE_INSTANCE records (users * 3)
-     * - Expected number of BUCKET_INSTANCE records (services * 2-5)
+     * - Expected number of SERVICE_INSTANCE records (users * 2)
+     * - Expected number of BUCKET_INSTANCE records (services * 1)
      */
     @GET
     @Path("/info")
@@ -95,8 +95,8 @@ public class ServiceInstanceResource {
         return dataGenerator.generateData()
                 .map(result -> Response.ok(Map.of(
                         "description", "SERVICE_INSTANCE and BUCKET_INSTANCE Data Generator",
-                        "servicesPerUser", 3,
-                        "bucketsPerService", "2-5 (random)",
+                        "servicesPerUser", 2,
+                        "bucketsPerService", 1,
                         "serviceStartDateDistribution", Map.of(
                                 "future", "5%",
                                 "today", "40%",
