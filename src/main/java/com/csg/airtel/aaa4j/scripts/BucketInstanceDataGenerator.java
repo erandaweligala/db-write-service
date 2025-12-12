@@ -40,6 +40,9 @@ public class BucketInstanceDataGenerator {
     private static final int BATCH_SIZE = 5000; // Increased from 1000 for better throughput
     private static final int PROGRESS_INTERVAL = 20000; // Less frequent logging
     private static final int CONCURRENT_BATCHES = 5; // Increased from 1 for parallel processing
+    private static final int MAX_RETRY_ATTEMPTS = 3; // Maximum retry attempts for failed batches
+    private static final long INITIAL_RETRY_DELAY_MS = 1000; // Initial retry delay (1 second)
+    private static final long BATCH_TIMEOUT_SECONDS = 60; // Timeout for each batch operation
 
     private static final String[] TIME_WINDOWS = {"00-08", "00-24", "00-18", "18-24"};
     private static final String[] CONSUMPTION_LIMIT = {"1", "7", "30"};
@@ -149,9 +152,9 @@ public class BucketInstanceDataGenerator {
                 .merge()
                 .group().intoLists().of(BATCH_SIZE)
                 .capDemandsTo(CONCURRENT_BATCHES)
-                .onItem().transformToUniAndMerge(serviceIdBatch ->
-                    // Fetch batch of IDs from sequence
-                    generateIds(serviceIdBatch.size())
+                .onItem().transformToUniAndMerge(serviceIdBatch -> {
+                    // Wrap the entire batch processing in retry logic with timeout
+                    Uni<List<Long>> batchOperation = generateIds(serviceIdBatch.size())
                         .chain(ids -> {
                             // Create batch records with generated IDs
                             List<BucketInstanceRecord> batch = new ArrayList<>(serviceIdBatch.size());
@@ -160,6 +163,16 @@ public class BucketInstanceDataGenerator {
                             }
                             return insertServiceInstanceBatch(batch);
                         })
+                        .ifNoItem().after(Duration.ofSeconds(BATCH_TIMEOUT_SECONDS))
+                        .failWith(() -> new RuntimeException(
+                            String.format("Batch operation timed out after %d seconds", BATCH_TIMEOUT_SECONDS)
+                        ));
+
+                    return retryWithBackoff(
+                        batchOperation,
+                        MAX_RETRY_ATTEMPTS,
+                        String.format("Batch insert (%d records)", serviceIdBatch.size())
+                    )
                         .onItem().invoke(() -> {
                             int services = serviceCount.addAndGet(serviceIdBatch.size());
 
@@ -172,22 +185,37 @@ public class BucketInstanceDataGenerator {
                         })
                         .onFailure().invoke(e -> {
                             failedCount.addAndGet(serviceIdBatch.size());
-                            log.errorf(e, "Batch insert failed: %s", e.getMessage());
+                            log.errorf(e, "Batch insert failed after %d retries, batch size: %d - %s",
+                                    MAX_RETRY_ATTEMPTS, serviceIdBatch.size(), e.getMessage());
                         })
-                        .onFailure().recoverWithItem(Collections.emptyList())
-                )
+                        .onFailure().recoverWithItem(Collections.emptyList());
+                })
                 .collect().asList()
                 .map(results -> {
                     Duration totalDuration = Duration.between(startTime, Instant.now());
+                    int actualInserted = serviceCount.get();
+                    int actualFailed = failedCount.get();
+
+                    // Validate that all records were accounted for
+                    int accountedFor = actualInserted + actualFailed;
+                    if (accountedFor != totalServices) {
+                        log.errorf("CRITICAL: Record count mismatch! Expected: %d, Inserted: %d, Failed: %d, Total: %d, Missing: %d",
+                                totalServices, actualInserted, actualFailed, accountedFor, (totalServices - accountedFor));
+                    }
+
                     return new GenerationResult(
-                            serviceCount.get(),
-                            failedCount.get(),
+                            actualInserted,
+                            actualFailed,
                             totalDuration
                     );
                 })
-                .onItem().invoke(result ->
-                    log.infof("Data generation completed: %s", result)
-                );
+                .onItem().invoke(result -> {
+                    log.infof("Data generation completed: %s", result);
+                    if (result.failed() > 0) {
+                        log.warnf("WARNING: %d records failed to insert after %d retry attempts",
+                                result.failed(), MAX_RETRY_ATTEMPTS);
+                    }
+                });
     }
 
     private BucketInstanceRecord createBucketInstanceRecord(long serviceId, long id) {
@@ -240,6 +268,20 @@ public class BucketInstanceDataGenerator {
     }
 
 
+
+    /**
+     * Retry a Uni operation with exponential backoff
+     */
+    private <T> Uni<T> retryWithBackoff(Uni<T> operation, int maxAttempts, String context) {
+        return operation
+                .onFailure()
+                .retry()
+                .withBackOff(Duration.ofMillis(INITIAL_RETRY_DELAY_MS))
+                .atMost(maxAttempts - 1) // -1 because first attempt doesn't count as retry
+                .onFailure()
+                .invoke(e -> log.errorf(e, "Failed after %d attempts: %s - %s",
+                        maxAttempts, context, e.getMessage()));
+    }
 
     /**
      * Insert a batch of SERVICE_INSTANCE records - OPTIMIZED
