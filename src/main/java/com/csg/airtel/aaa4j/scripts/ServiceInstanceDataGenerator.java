@@ -41,8 +41,8 @@ public class ServiceInstanceDataGenerator {
     private static final int BATCH_SIZE = 5000; // Increased from 1000 for better throughput
     private static final int BUCKET_BATCH_SIZE = 10000; // Increased from 2000 for larger batch inserts
     private static final int PROGRESS_INTERVAL = 20000; // Less frequent logging
-    private static final int CONCURRENT_BATCHES = 10; // Increased from 1 for parallel processing
-    private static final int BUCKET_CONCURRENT_BATCHES = 10; // Increased from 1 for higher bucket insert concurrency
+    private static final int CONCURRENT_BATCHES = 4; // Increased from 1 for parallel processing
+    private static final int BUCKET_CONCURRENT_BATCHES = 6; // Increased from 1 for higher bucket insert concurrency
 
     // SERVICE_INSTANCE constants
     private static final String[] PLAN_IDS = {
@@ -125,6 +125,8 @@ public class ServiceInstanceDataGenerator {
     /**
      * Generate SERVICE_INSTANCE records for all users - OPTIMIZED
      */
+
+    //todo only insert SERVICE_INSTANCE table only no need to insert data Bucket_instance table
     private Uni<GenerationResult> generateServiceInstances(List<String> usernames, Instant startTime) {
         AtomicInteger serviceCount = new AtomicInteger(0);
         AtomicInteger bucketCount = new AtomicInteger(0);
