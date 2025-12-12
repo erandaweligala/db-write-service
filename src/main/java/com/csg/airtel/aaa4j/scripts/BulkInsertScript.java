@@ -181,7 +181,8 @@ public class BulkInsertScript {
     }
 
     /**
-     * Insert a batch of records using multi-row INSERT statement
+     * Insert a batch of records using executeBatch
+     * Uses individual INSERT statements to avoid Oracle INSERT ALL bind variable limitations
      * Schema: USER_ID, BANDWIDTH, BILLING, BILLING_ACCOUNT_REF, CIRCUIT_ID, CONCURRENCY,
      *         CONTACT_EMAIL, CONTACT_NAME, CONTACT_NUMBER, CREATED_DATE, CUSTOM_TIMEOUT,
      *         CYCLE_DATE, ENCRYPTION_METHOD, GROUP_ID, IDLE_TIMEOUT, IP_ALLOCATION, IP_POOL_NAME,
@@ -189,23 +190,18 @@ public class BulkInsertScript {
      *         SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, NAS_IP_ADDRESS, SUBSCRIPTION
      */
     private Uni<Integer> insertBatch(String tableName, int startIndex, int batchSize) {
-        // Build multi-row INSERT statement for Oracle
-        StringBuilder sql = new StringBuilder();
-        sql.append("INSERT ALL ");
-
-        String columns = "(USER_ID, BANDWIDTH, BILLING, BILLING_ACCOUNT_REF, CIRCUIT_ID, CONCURRENCY, " +
+        String sql = "INSERT INTO " + tableName + " " +
+                "(USER_ID, BANDWIDTH, BILLING, BILLING_ACCOUNT_REF, CIRCUIT_ID, CONCURRENCY, " +
                 "CONTACT_EMAIL, CONTACT_NAME, CONTACT_NUMBER, CREATED_DATE, CUSTOM_TIMEOUT, " +
                 "CYCLE_DATE, ENCRYPTION_METHOD, GROUP_ID, IDLE_TIMEOUT, IP_ALLOCATION, IP_POOL_NAME, " +
                 "IPV4, IPV6, MAC_ADDRESS, NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID, " +
-                "SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, NAS_IP_ADDRESS, SUBSCRIPTION)";
+                "SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, NAS_IP_ADDRESS, SUBSCRIPTION) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-        String placeholders = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        List<Object> values = new ArrayList<>(batchSize * 31);
+        List<Tuple> tuples = new ArrayList<>(batchSize);
 
         for (int i = 0; i < batchSize; i++) {
             int recordId = startIndex + i + 1;
-            sql.append("INTO ").append(tableName).append(" ").append(columns).append(" VALUES ").append(placeholders).append(" ");
 
             // Generate unique values
             String userName = generateUniqueUserName(recordId);
@@ -213,6 +209,7 @@ public class BulkInsertScript {
             String macAddress = generateUniqueMacAddress(recordId);
 
             // Generate data for each record
+            List<Object> values = new ArrayList<>(31);
             values.add(recordId);                                                          // USER_ID (primary key)
             values.add(BANDWIDTHS[random.nextInt(BANDWIDTHS.length)]);                    // BANDWIDTH
             values.add("3");              // BILLING
@@ -244,14 +241,12 @@ public class BulkInsertScript {
             values.add(random.nextInt(4094) + 1);                                         // VLAN_ID (1-4094)
             values.add(generateNasIpAddress());                                            // NAS_IP_ADDRESS
             values.add(SUBSCRIPTIONS[random.nextInt(SUBSCRIPTIONS.length)]);              // SUBSCRIPTION (PREPAID, POSTPAID, HYBRID)
+
+            tuples.add(Tuple.from(values));
         }
 
-        sql.append("SELECT * FROM DUAL");
-
-        Tuple tuple = Tuple.from(values);
-
-        return client.preparedQuery(sql.toString())
-                .execute(tuple)
+        return client.preparedQuery(sql)
+                .executeBatch(tuples)
                 .map(result -> batchSize)
                 .onFailure().retry().atMost(3)
                 .onFailure().recoverWithItem(0);
