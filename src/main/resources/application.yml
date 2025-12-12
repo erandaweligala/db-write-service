@@ -27,9 +27,9 @@ quarkus:
         oracle.net.keepAlive: "true"
   otel:
     enabled: false
-  #  vertx:
-#    event-loops-pool-size: 32
-#    max-worker-execute-time: 60
+  vertx:
+    max-worker-execute-time: 600  # 10 minutes for large batch operations
+    warning-exception-time: 600   # 10 minutes before warning about blocking
   # Redis Configuration - Optimized for 1000 TPS
   redis:
     hosts: redis://localhost:6379

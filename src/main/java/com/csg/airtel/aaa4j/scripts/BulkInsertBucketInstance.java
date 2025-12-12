@@ -427,11 +427,14 @@ public class BulkInsertBucketInstance {
         }
 
         // Use withConnection to ensure the connection is not closed during the batch operation
+        // Set explicit timeout of 10 minutes for large batch operations
         return client.withConnection(conn ->
                 conn.preparedQuery(sql)
                         .executeBatch(tuples)
                         .map(result -> records.size())
         )
+        .ifNoItem().after(Duration.ofMinutes(10)).failWith(() ->
+                new RuntimeException("Batch insert operation timed out after 10 minutes for " + records.size() + " records"))
         .onFailure()
         .invoke(e -> log.errorf(e, "Failed to insert bucket chunk: %s", e.getMessage()));
     }
