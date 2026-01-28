@@ -284,10 +284,15 @@ public class CsvExportUtil {
 
     /**
      * Fetch a batch of records from the database.
+     * Joins with AAA_USER_MAC_ADDRESS table to get MAC address information.
      */
     private Uni<RowSet<Row>> fetchBatch(String tableName, int offset, int limit) {
         String sql = String.format(
-                "SELECT * FROM %s ORDER BY USER_ID OFFSET %d ROWS FETCH NEXT %d ROWS ONLY",
+                "SELECT u.*, m.MAC_ADDRESS, m.ORIGINAL_MAC_ADDRESS " +
+                "FROM %s u " +
+                "LEFT JOIN AAA_USER_MAC_ADDRESS m ON u.USER_NAME = m.USER_NAME " +
+                "ORDER BY u.USER_ID " +
+                "OFFSET %d ROWS FETCH NEXT %d ROWS ONLY",
                 tableName, offset, limit
         );
 
@@ -339,7 +344,7 @@ public class CsvExportUtil {
        // sb.append(escapeCSV(getString(row, "IPV4"))).append(",");
         // IPV6
       //  sb.append(escapeCSV(getString(row, "IPV6"))).append(",");
-        // MAC_ADDRESS (formatted with colons)
+        // MAC_ADDRESS (from AAA_USER_MAC_ADDRESS table join, formatted with colons)
         String macAddress = getString(row, "MAC_ADDRESS");
         sb.append(escapeCSV(formatMacAddress(macAddress))).append(",");
         // NAS_PORT_TYPE
