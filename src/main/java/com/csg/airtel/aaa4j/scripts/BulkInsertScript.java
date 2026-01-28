@@ -195,6 +195,7 @@ public class BulkInsertScript {
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         List<Tuple> tuples = new ArrayList<>(batchSize);
+        List<String> userNames = new ArrayList<>(batchSize); // Collect usernames for MAC address insertion
 
         for (int i = 0; i < batchSize; i++) {
             int recordId = startIndex + i + 1;
@@ -203,6 +204,8 @@ public class BulkInsertScript {
             String userName = generateUniqueUserName(recordId);
             String requestId = generateUniqueRequestId(recordId);
             String macAddress = generateUniqueMacAddress(recordId);
+
+            userNames.add(userName); // Store username for MAC address insertion
 
             // Generate data for each record
             List<Object> values = new ArrayList<>(31);
@@ -247,7 +250,7 @@ public class BulkInsertScript {
                 .chain(insertedCount -> {
                     // After main insert succeeds, insert MAC addresses into separate table
                     if (insertedCount > 0) {
-                        return insertMacAddressBatch(startIndex, batchSize)
+                        return insertMacAddressBatch(startIndex, batchSize, userNames)
                                 .map(macCount -> insertedCount); // Return the original count
                     }
                     return Uni.createFrom().item(insertedCount);
@@ -260,11 +263,12 @@ public class BulkInsertScript {
      *
      * @param startIndex Starting record index
      * @param batchSize Number of records in this batch
+     * @param userNames List of usernames from AAA_USER table to reference
      * @return Uni containing the number of inserted records
      */
 
 
-    private Uni<Integer> insertMacAddressBatch(int startIndex, int batchSize) {
+    private Uni<Integer> insertMacAddressBatch(int startIndex, int batchSize, List<String> userNames) {
         String sql = "INSERT INTO AAA_USER_MAC_ADDRESS " +
                 "(USER_NAME, MAC_ADDRESS, ORIGINAL_MAC_ADDRESS, CREATED_DATE, UPDATED_DATE) " +
                 "VALUES (?, ?, ?, ?, ?)";
@@ -273,7 +277,7 @@ public class BulkInsertScript {
 
         for (int i = 0; i < batchSize; i++) {
             int recordId = startIndex + i + 1;
-            String userName = "USER_" + String.format("%08d", recordId); //todo  username get from AAA_USER table
+            String userName = userNames.get(i); // Get username from AAA_USER table
             String macAddressWithColons = generateUniqueMacAddress(recordId);
             String macAddressNormalized = macAddressWithColons.replace(":", "").toLowerCase();
 
@@ -455,12 +459,15 @@ public class BulkInsertScript {
                 .capDemandsTo(CONCURRENT_BATCHES)
                 .onItem().transformToUniAndMerge(batch -> {
                     List<Tuple> tuples = new ArrayList<>(batch.size());
+                    List<String> userNames = new ArrayList<>(batch.size()); // Collect usernames for MAC address insertion
 
                     for (Integer index : batch) {
                         int recordId = index + 1;
                         String userName = generateUniqueUserName(recordId);
                         String requestId = generateUniqueRequestId(recordId);
                         String macAddress = generateUniqueMacAddress(recordId);
+
+                        userNames.add(userName); // Store username for MAC address insertion
 
                         List<Object> values = new ArrayList<>(31);
                         values.add(String.valueOf("USR0000"+recordId));
@@ -518,7 +525,7 @@ public class BulkInsertScript {
                             .chain(rowCount -> {
                                 // After main insert succeeds, insert MAC addresses into separate table
                                 if (rowCount > 0) {
-                                    return insertMacAddressBatch(batchStartIndex, batch.size())
+                                    return insertMacAddressBatch(batchStartIndex, batch.size(), userNames)
                                             .map(macCount -> rowCount); // Return the original row count
                                 }
                                 return Uni.createFrom().item(rowCount);
