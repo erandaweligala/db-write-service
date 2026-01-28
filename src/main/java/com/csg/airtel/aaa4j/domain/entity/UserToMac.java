@@ -14,8 +14,9 @@ public class UserToMac {
     @Column(name = "ID")
     private Long id;
 
-    @Column(name = "USER_NAME", nullable = false)
-    private String userName;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "USER_NAME", referencedColumnName = "USER_NAME", nullable = false)
+    private UserEntity user;
 
     @Column(name = "MAC_ADDRESS", nullable = false)
     private String macAddress; // Normalized format (no separators, lowercase)
@@ -29,4 +30,58 @@ public class UserToMac {
 
     @Column(name = "UPDATED_DATE")
     private LocalDateTime updatedDate;
+
+    // Getters and Setters
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public UserEntity getUser() {
+        return user;
+    }
+
+    public void setUser(UserEntity user) {
+        this.user = user;
+    }
+
+    // Convenience method to get userName from the associated user
+    public String getUserName() {
+        return user != null ? user.getUserName() : null;
+    }
+
+    public String getMacAddress() {
+        return macAddress;
+    }
+
+    public void setMacAddress(String macAddress) {
+        this.macAddress = macAddress;
+    }
+
+    public String getOriginalMacAddress() {
+        return originalMacAddress;
+    }
+
+    public void setOriginalMacAddress(String originalMacAddress) {
+        this.originalMacAddress = originalMacAddress;
+    }
+
+    public LocalDateTime getCreatedDate() {
+        return createdDate;
+    }
+
+    public void setCreatedDate(LocalDateTime createdDate) {
+        this.createdDate = createdDate;
+    }
+
+    public LocalDateTime getUpdatedDate() {
+        return updatedDate;
+    }
+
+    public void setUpdatedDate(LocalDateTime updatedDate) {
+        this.updatedDate = updatedDate;
+    }
 }

@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Random;
 
 @Entity
@@ -123,6 +124,9 @@ public class UserEntity {
     @Column(name = "UPDATED_DATE")
     private LocalDateTime updatedDate;
 
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<UserToMac> macAddresses;
+
     @PrePersist
     public void generateUserId() {
         if (this.userId == null || this.userId.isEmpty()) {
@@ -136,5 +140,270 @@ public class UserEntity {
         long timestamp = System.currentTimeMillis();
         int random = RANDOM.nextInt(10_000);
         return String.format("USR%d%04d", timestamp, random);
+    }
+
+    // Getters and Setters
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
+    }
+
+    public String getUserName() {
+        return userName;
+    }
+
+    public void setUserName(String userName) {
+        this.userName = userName;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public Integer getEncryptionMethod() {
+        return encryptionMethod;
+    }
+
+    public void setEncryptionMethod(Integer encryptionMethod) {
+        this.encryptionMethod = encryptionMethod;
+    }
+
+    public String getNasPortType() {
+        return nasPortType;
+    }
+
+    public void setNasPortType(String nasPortType) {
+        this.nasPortType = nasPortType;
+    }
+
+    public String getGroupId() {
+        return groupId;
+    }
+
+    public void setGroupId(String groupId) {
+        this.groupId = groupId;
+    }
+
+    public String getBandwidth() {
+        return bandwidth;
+    }
+
+    public void setBandwidth(String bandwidth) {
+        this.bandwidth = bandwidth;
+    }
+
+    public String getVlanId() {
+        return vlanId;
+    }
+
+    public void setVlanId(String vlanId) {
+        this.vlanId = vlanId;
+    }
+
+    public String getCircuitId() {
+        return circuitId;
+    }
+
+    public void setCircuitId(String circuitId) {
+        this.circuitId = circuitId;
+    }
+
+    public String getRemoteId() {
+        return remoteId;
+    }
+
+    public void setRemoteId(String remoteId) {
+        this.remoteId = remoteId;
+    }
+
+    public String getMacAddress() {
+        return macAddress;
+    }
+
+    public void setMacAddress(String macAddress) {
+        this.macAddress = macAddress;
+    }
+
+    public String getIpAllocation() {
+        return ipAllocation;
+    }
+
+    public void setIpAllocation(String ipAllocation) {
+        this.ipAllocation = ipAllocation;
+    }
+
+    public String getIpPoolName() {
+        return ipPoolName;
+    }
+
+    public void setIpPoolName(String ipPoolName) {
+        this.ipPoolName = ipPoolName;
+    }
+
+    public String getIpv4() {
+        return ipv4;
+    }
+
+    public void setIpv4(String ipv4) {
+        this.ipv4 = ipv4;
+    }
+
+    public String getIpv6() {
+        return ipv6;
+    }
+
+    public void setIpv6(String ipv6) {
+        this.ipv6 = ipv6;
+    }
+
+    public String getBilling() {
+        return billing;
+    }
+
+    public void setBilling(String billing) {
+        this.billing = billing;
+    }
+
+    public Integer getCycleDate() {
+        return cycleDate;
+    }
+
+    public void setCycleDate(Integer cycleDate) {
+        this.cycleDate = cycleDate;
+    }
+
+    public String getContactName() {
+        return contactName;
+    }
+
+    public void setContactName(String contactName) {
+        this.contactName = contactName;
+    }
+
+    public String getContactEmail() {
+        return contactEmail;
+    }
+
+    public void setContactEmail(String contactEmail) {
+        this.contactEmail = contactEmail;
+    }
+
+    public String getContactNumber() {
+        return contactNumber;
+    }
+
+    public void setContactNumber(String contactNumber) {
+        this.contactNumber = contactNumber;
+    }
+
+    public Integer getConcurrency() {
+        return concurrency;
+    }
+
+    public void setConcurrency(Integer concurrency) {
+        this.concurrency = concurrency;
+    }
+
+    public String getBillingAccountRef() {
+        return billingAccountRef;
+    }
+
+    public void setBillingAccountRef(String billingAccountRef) {
+        this.billingAccountRef = billingAccountRef;
+    }
+
+    public String getSessionTimeout() {
+        return sessionTimeout;
+    }
+
+    public void setSessionTimeout(String sessionTimeout) {
+        this.sessionTimeout = sessionTimeout;
+    }
+
+    public String getIdleTimeout() {
+        return idleTimeout;
+    }
+
+    public void setIdleTimeout(String idleTimeout) {
+        this.idleTimeout = idleTimeout;
+    }
+
+    public String getCustomTimeout() {
+        return customTimeout;
+    }
+
+    public void setCustomTimeout(String customTimeout) {
+        this.customTimeout = customTimeout;
+    }
+
+    public Subscription getSubscription() {
+        return subscription;
+    }
+
+    public void setSubscription(Subscription subscription) {
+        this.subscription = subscription;
+    }
+
+    public UserStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(UserStatus status) {
+        this.status = status;
+    }
+
+    public String getRequestId() {
+        return requestId;
+    }
+
+    public void setRequestId(String requestId) {
+        this.requestId = requestId;
+    }
+
+    public Long getTemplateId() {
+        return templateId;
+    }
+
+    public void setTemplateId(Long templateId) {
+        this.templateId = templateId;
+    }
+
+    public String getTemplateName() {
+        return templateName;
+    }
+
+    public void setTemplateName(String templateName) {
+        this.templateName = templateName;
+    }
+
+    public LocalDateTime getCreatedDate() {
+        return createdDate;
+    }
+
+    public void setCreatedDate(LocalDateTime createdDate) {
+        this.createdDate = createdDate;
+    }
+
+    public LocalDateTime getUpdatedDate() {
+        return updatedDate;
+    }
+
+    public void setUpdatedDate(LocalDateTime updatedDate) {
+        this.updatedDate = updatedDate;
+    }
+
+    public List<UserToMac> getMacAddresses() {
+        return macAddresses;
+    }
+
+    public void setMacAddresses(List<UserToMac> macAddresses) {
+        this.macAddresses = macAddresses;
     }
 }
