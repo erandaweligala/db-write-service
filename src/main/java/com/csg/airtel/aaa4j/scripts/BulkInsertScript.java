@@ -263,7 +263,7 @@ public class BulkInsertScript {
      * @return Uni containing the number of inserted records
      */
 
-    //todo username relation with AAA_USER.user_name need to fixed
+
     private Uni<Integer> insertMacAddressBatch(int startIndex, int batchSize) {
         String sql = "INSERT INTO AAA_USER_MAC_ADDRESS " +
                 "(USER_NAME, MAC_ADDRESS, ORIGINAL_MAC_ADDRESS, CREATED_DATE, UPDATED_DATE) " +
@@ -273,7 +273,7 @@ public class BulkInsertScript {
 
         for (int i = 0; i < batchSize; i++) {
             int recordId = startIndex + i + 1;
-            String userName = "USER_" + String.format("%08d", recordId);
+            String userName = "USER_" + String.format("%08d", recordId); //todo  username get from AAA_USER table
             String macAddressWithColons = generateUniqueMacAddress(recordId);
             String macAddressNormalized = macAddressWithColons.replace(":", "").toLowerCase();
 
