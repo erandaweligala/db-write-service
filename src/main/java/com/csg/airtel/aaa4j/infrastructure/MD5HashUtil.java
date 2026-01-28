@@ -1,11 +1,16 @@
 package com.csg.airtel.aaa4j.infrastructure;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import lombok.SneakyThrows;
 import org.jboss.logging.Logger;
 
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
 
 /**
  * Utility class for MD5 hashing operations.
@@ -39,6 +44,23 @@ public class MD5HashUtil {
             throw new RuntimeException("MD5 algorithm not available", e);
         }
     }
+    @SneakyThrows
+    public String encrypt(String plainText, String algorithm, String secretKeyValue) {
+        Cipher cipher = getCipher(algorithm);
+        SecretKey secretKey = getSecretKey(algorithm, secretKeyValue);
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+        byte[] encryptedBytes = cipher.doFinal(plainText.getBytes());
+        return Base64.getEncoder().encodeToString(encryptedBytes);
+    }
+    @SneakyThrows
+    private Cipher getCipher(String algorithm) {
+        return Cipher.getInstance(algorithm);
+    }
+
+    private SecretKey getSecretKey(String algorithm, String secretKeyValue) {
+        return new SecretKeySpec(secretKeyValue.getBytes(), algorithm);
+    }
+
 
     /**
      * Hash a password if it's a CHAP password, otherwise return as-is.

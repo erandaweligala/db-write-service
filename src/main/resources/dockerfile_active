@@ -1,19 +1,57 @@
-FROM 10.200.140.150:5000/java-build:LANGUAGE_VERSION as builder
+FROM 10.200.140.150:5000/java-build:21 as builder
 RUN java -version
 COPY . /tmp
 WORKDIR /tmp
-RUN BUILD_CMD
+RUN mvn --settings settings.xml clean install -DskipTests ; test $? -eq 0 || exit 1
 
-FROM 10.200.140.150:5000/java-run:LANGUAGE_VERSION
-RUN apk add --no-cache libstdc++
-RUN java -version ; mkdir -p /app /var/log/dte/ ; adduser -h /bin/bash -s /bin/bash -u 1100 --disabled-password dteuser
-COPY --from=builder /tmp/MICROSERVICE_JAR_PATH/quarkus-app/ /app/
-RUN mv /app/quarkus-run.jar /app/MICROSERVICE_NAME.jar
-COPY --from=builder /tmp/src/main/resources/* /app/
-RUN chown -R dteuser:dteuser /app /var/log/dte/
-RUN chmod -R 777 /var/log/dte/
-USER dteuser
-WORKDIR /home/dteuser
-ENV JAVA_OPTS ""
+##FROM 10.200.140.150:5000/java-run:21
+#FROM eclipse-temurin:21.0.8_9-jdk-ubi9-minimal
+##RUN java -version ; mkdir -p /app /var/log/dte/ ; adduser -h /bin/bash -s /bin/bash -u 1100 --disabled-password dteuser
+#COPY --from=builder /tmp/target/quarkus-app/ /app/
+#RUN mv /app/quarkus-run.jar /app/airtel-aaa-radius-server.jar
+#RUN java -version ; mkdir -p /app /app-config /var/log/dte/ ; useradd -m -s /bin/bash -u 1100 -N dteuser
+#RUN groupadd dteuser
+#RUN java -version ; mkdir -p /app /app-config /var/log/dte/ ; adduser -h /bin/bash -s /bin/bash -u 1100 --disabled-password dteuser
+#COPY --from=builder /tmp/src/main/resources/* /app/
+#RUN chown -R dteuser:dteuser /app /var/log/dte/
+#RUN chmod -R 777 /var/log/dte/
+#USER dteuser
+#WORKDIR /home/dteuser
+#ENV JAVA_OPTS ""
 
 
+
+#FROM amazoncorretto:21-alpine3.20-jdk
+FROM amazoncorretto:21
+# App paths
+ENV APP_DIR=/app \
+    LOG_DIR=/var/log/dte \
+    APP_JAR=airtel-aaa-db-write-service.jar \
+    JAVA_OPTS=""
+
+
+RUN yum install -y shadow-utils
+
+RUN yum -y update-minimal --security --advisory=ALAS2-2025-3034 || \
+    yum -y update openssl openssl-libs && \
+    yum -y install shadow-utils && \
+    yum install -y tcpdump && \
+    yum install -y iproute procps-ng net-tools util-linux lsof && \
+    yum -y clean all && rm -rf /var/cache/yum
+
+RUN java -version ; mkdir -p /app /app-config /var/log/dte/ ; useradd -m -s /bin/bash -u 1100 -N dteuser
+RUN groupadd dteuser
+RUN java -version ; mkdir -p /app /app-config /var/log/dte/ ; adduser -h /bin/bash -s /bin/bash -u 1100 --disabled-password dteuser
+
+# Copy Quarkus fast-jar layout from builder stage
+# (assumes you built with `-Dquarkus.package.type=fast-jar`)
+COPY --from=builder --chown=dteuser:dteuser /tmp/target/quarkus-app/ ${APP_DIR}/
+# Optional: app resources/config (if you really need these at runtime)
+COPY --from=builder --chown=dteuser:dteuser /tmp/src/main/resources/ ${APP_DIR}/resources/
+
+# If you insist on a single runnable jar name:
+RUN mv ${APP_DIR}/quarkus-run.jar ${APP_DIR}/${APP_JAR}
+
+#USER dteuser
+USER root
+WORKDIR ${APP_DIR}

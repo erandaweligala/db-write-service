@@ -1,10 +1,9 @@
 package com.csg.airtel.aaa4j.infrastructure;
 
-import io.quarkus.runtime.StartupEvent;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
+import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
@@ -16,7 +15,7 @@ import java.util.List;
  * Pre-creates connections on application startup to avoid cold-start latency
  * Critical for achieving consistent 1000+ TPS from startup
  */
-//@ApplicationScoped
+@ApplicationScoped
 public class DatabasePoolWarmup {
     private static final Logger log = Logger.getLogger(DatabasePoolWarmup.class);
 
@@ -29,8 +28,8 @@ public class DatabasePoolWarmup {
     public DatabasePoolWarmup(Pool dbClient) {
         this.dbClient = dbClient;
     }
-
-    void onStart(StartupEvent ev) {
+    @PostConstruct
+    void onStart() {
         log.info("Starting database connection pool warm-up...");
         long startTime = System.currentTimeMillis();
 

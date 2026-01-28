@@ -8,43 +8,71 @@ quarkus:
     password: Aaa!89nky78D
     reactive:
       url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
+    jdbc:
+      url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
+      driver: oracle.jdbc.OracleDriver
 
-      # Database Configuration
-      #  datasource:
-      #    db-kind: oracle
-      #    username: system
-      #    password: admin
-      #    reactive:
-      #      url: oracle:thin:@localhost:1521/freepdb1
-      max-size: 20
-      event-loop-size: 8
-      idle-timeout: PT15M
-      max-lifetime: PT15M
-      cache-prepared-statements: true
-      reconnect-attempts: 3
-      reconnect-interval: PT2S
-      shared: false
-      name: oracle-pool
-      additional-properties:
-        oracle.jdbc.implicitStatementCacheSize: "250"
-        oracle.jdbc.ReadTimeout: "60000"                   # Increased to 60s for high CPU/load scenarios
-        oracle.net.CONNECT_TIMEOUT: "30000"                # Increased to 30s for connection establishment
-        oracle.net.READ_TIMEOUT: "60000"                   # Socket-level read timeout (60s)
-        oracle.jdbc.loginTimeout: "60"                     # Login timeout in seconds
-        oracle.jdbc.defaultRowPrefetch: "100"
-        oracle.net.keepAlive: "true"                       # Enable TCP keepalive for connection stability
 
-  log:
-    level: INFO
-    console:
-      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
   console:
     color: true
+  log:
+    level: INFO
+    file:
+      path: /var/log/db-write/db-write.log
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+      rotation:
+        max-file-size: 100M
+        max-backup-index: 10
+        rotate-on-boot: true
+    console:
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+    category:
+      "org.apache.kafka":
+        level: WARN
+      "io.smallrye.reactive.messaging.kafka":
+        level: INFO
+      "io.quarkus.config":
+        level: INFO
+      "io.smallrye.config":
+        level: INFO
+      "com.csg.airtel.aaa4j":
+        level: INFO
+
+  redis:
+    client-type: sentinel
+    hosts: redis://redis-cluster.cluster-redis.svc.cluster.local:26379
+    master-name: mymaster
+    role: master
+    password: AAAtest_Redis_Pass_w0rd!
+    max-pool-size: 300
+    max-waiting-handlers: 5000
+    max-pool-waiting: 800
+    pool-recycle-timeout: 240000
+    reconnect-attempts: 3
+    reconnect-interval: 500
+    pool-cleaner-interval: 20000
+    timeout: 60000
+
+pool:
+  max-size: 50                      # Max connections
+  connection-timeout: 5000          # 5 seconds to acquire connection
+  idle-timeout: 600000              # 10 minutes idle before closing
+  max-lifetime: 1800000             # 30 minutes max connection lifetime
+  acquire-increment: 4              # Connections to acquire at once
+  prepared-statement-cache-max-size: 256  # Cache prepared statements
+  pipelining-enabled: true          # Enable query pipelining
+  pipelining-limit: 256             # Max pipelined queries
+  event-loop-size: 32               # Match vertx event-loops-pool-size
+  tcp-keep-alive: true              # Detect dead connections
+  tcp-no-delay: true                # Reduce latency
+  pool-cleaner-enabled: true        # Clean idle connections
+  pool-cleaner-interval: 60000      # Clean every minute
+
 # Kafka Configuration
 
 kafka:
   bootstrap:
-    servers: confluent-ctrl-0-svc.rkafkacone.svc.cluster.local:9092
+    servers: kafka-headless.cluster-dc.svc.cluster.local:9092
 
 mp:
   messaging:
@@ -56,8 +84,25 @@ mp:
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
-        enable.auto.commit: true
+        enable.auto.commit: false
         max.poll.records: 100
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         failure-strategy: ignore
+
+
+      db-write-events-dr:
+        connector: smallrye-kafka
+        topic: dc-provisioning
+        group.id: accounting-dc-group
+        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
+        value.deserializer.class: com.csg.airtel.aaa4j.domain.model.DBWriteRequest
+        value.deserializer.trusted-packages: "*"
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: earliest
+        enable.auto.commit: false
+        max.poll.records: 100
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 30000
+        failure-strategy: ignore
+ 

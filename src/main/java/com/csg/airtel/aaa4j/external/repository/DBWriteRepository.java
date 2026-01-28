@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.external.repository;
 
+
 import com.csg.airtel.aaa4j.infrastructure.DatabaseCircuitBreaker;
 import com.csg.airtel.aaa4j.infrastructure.PerformanceMetrics;
 import io.smallrye.mutiny.Uni;
@@ -15,7 +16,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.*;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 @ApplicationScoped
@@ -119,15 +121,28 @@ public class DBWriteRepository {
         }
 
         Tuple tuple = Tuple.from(values);
-        return client.preparedQuery(sqlStr)
-                .execute(tuple)
-                .map(SqlResult::rowCount);
+        
+        client.preparedQuery(sqlStr)
+        .execute(tuple)
+        .map(SqlResult::rowCount)
+        .onFailure().invoke(t -> log.error("Update failed", t))
+        .subscribe().with(
+                r -> {},
+                t -> {}
+        );
+
+        return Uni.createFrom().item(1);
+        // return client.preparedQuery(sqlStr)
+        //         .execute(tuple)
+        //         .map(SqlResult::rowCount);
+
     }
 
     /**
      * Optimized value conversion with pre-compiled pattern matching
      * Eliminates regex compilation overhead (500ns -> 50ns per call)
      */
+    @SuppressWarnings("java:S1066")
     private Object convertValue(Object value) {
         if (value == null) {
             return null;
@@ -150,13 +165,96 @@ public class DBWriteRepository {
         return value;
     }
 
-    /**
-     * Record class for batch update operations
-     */
-    public record UpdateOperation(
-        String tableName,
-        Map<String, Object> columnValues,
-        Map<String, Object> whereConditions
-    ) {}
+    public Uni<Integer> executeDelete(String tableName,
+                                       Map<String, Object> whereConditions) {
+
+        int whereCount = whereConditions.size();
+
+        StringBuilder sql = new StringBuilder(32 + tableName.length() + (whereCount * 10));
+        sql.append("DELETE FROM ").append(tableName);
+
+        Object[] values = new Object[whereCount];
+        int idx = 0;
+
+        if (!whereConditions.isEmpty()) {
+            sql.append(" WHERE ");
+            Iterator<Map.Entry<String, Object>> whereIter = whereConditions.entrySet().iterator();
+            while (whereIter.hasNext()) {
+                Map.Entry<String, Object> entry = whereIter.next();
+                sql.append(entry.getKey()).append(" = ?");
+                values[idx++] = entry.getValue();
+                if (whereIter.hasNext()) sql.append(" AND ");
+            }
+        }
+
+        String sqlStr = sql.toString();
+        if (log.isDebugEnabled()) {
+            log.debugf("SQL: %s", sqlStr);
+        }
+
+        Tuple tuple = Tuple.from(values);
+
+        client.preparedQuery(sqlStr)
+                .execute(tuple)
+                .map(SqlResult::rowCount)
+                .onFailure().invoke(t -> log.error("Delete failed", t))
+                .subscribe().with(
+                        r -> {},
+                        t -> {}
+                );
+
+        return Uni.createFrom().item(1);
+    }
+
+
+    public Uni<Integer> executeInsert(String tableName,
+                                       Map<String, Object> columnValues) {
+
+        int columnCount = columnValues.size();
+
+        StringBuilder sql = new StringBuilder(64 + tableName.length() + (columnCount * 10));
+        sql.append("INSERT INTO ").append(tableName).append(" (");
+
+        Object[] values = new Object[columnCount];
+        int idx = 0;
+
+        // Build column list
+        Iterator<Map.Entry<String, Object>> colIter = columnValues.entrySet().iterator();
+        while (colIter.hasNext()) {
+            Map.Entry<String, Object> entry = colIter.next();
+            sql.append(entry.getKey());
+            values[idx++] = convertValue(entry.getValue());
+            if (colIter.hasNext()) sql.append(", ");
+        }
+
+        // Build placeholders
+        sql.append(") VALUES (");
+        for (int i = 0; i < columnCount; i++) {
+            sql.append("?");
+            if (i < columnCount - 1) sql.append(", ");
+        }
+        sql.append(")");
+
+        String sqlStr = sql.toString();
+        if (log.isDebugEnabled()) {
+            log.debugf("SQL: %s", sqlStr);
+        }
+
+        Tuple tuple = Tuple.from(values);
+
+        // Reactive execution
+        client.preparedQuery(sqlStr)
+                .execute(tuple)
+                .map(SqlResult::rowCount)
+                .onFailure().invoke(t -> log.error("Insert failed", t))
+                .subscribe().with(
+                        r -> {},
+                        t -> {}
+                );
+
+        return Uni.createFrom().item(1);
+    }
+
+
 
 }

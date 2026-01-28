@@ -1,5 +1,7 @@
 package com.csg.airtel.aaa4j.scripts;
 
+import com.csg.airtel.aaa4j.infrastructure.CsvExportUtil;
+import com.csg.airtel.aaa4j.infrastructure.CsvExportUtil.CsvExportResult;
 import com.csg.airtel.aaa4j.infrastructure.MD5HashUtil;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
@@ -7,8 +9,6 @@ import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.Row;
 import io.vertx.mutiny.sqlclient.SqlResult;
 import io.vertx.mutiny.sqlclient.Tuple;
-import com.csg.airtel.aaa4j.infrastructure.CsvExportUtil;
-import com.csg.airtel.aaa4j.infrastructure.CsvExportUtil.CsvExportResult;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
@@ -17,12 +17,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Random;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -47,10 +42,10 @@ public class BulkInsertScript {
     private static final Logger log = Logger.getLogger(BulkInsertScript.class);
 
     // Configuration constants
-    private static final int TOTAL_RECORDS = 1_000_000;
-    private static final int BATCH_SIZE = 1000;           // Records per batch
-    private static final int PROGRESS_INTERVAL = 10_000;  // Log progress every N records
-    private static final int CONCURRENT_BATCHES = 10;     // Number of concurrent batch executions
+    private static final int TOTAL_RECORDS = 960000;
+    private static final int BATCH_SIZE = 10;           // Records per batch
+    private static final int PROGRESS_INTERVAL = 5000;  // Log progress every N records
+    private static final int CONCURRENT_BATCHES = 4;     // Number of concurrent batch executions
 
     // Data generation constants
     private static final String[] NAS_PORT_TYPES = {"Ethernet", "Wireless-802.11", "Virtual", "Async", "ISDN-Sync", "ISDN-Async-V120", "ISDN-Async-V110", "DSL"};
@@ -195,8 +190,8 @@ public class BulkInsertScript {
                 "CONTACT_EMAIL, CONTACT_NAME, CONTACT_NUMBER, CREATED_DATE, CUSTOM_TIMEOUT, " +
                 "CYCLE_DATE, ENCRYPTION_METHOD, GROUP_ID, IDLE_TIMEOUT, IP_ALLOCATION, IP_POOL_NAME, " +
                 "IPV4, IPV6, MAC_ADDRESS, NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID, " +
-                "SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, NAS_IP_ADDRESS, SUBSCRIPTION) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, SUBSCRIPTION) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         List<Tuple> tuples = new ArrayList<>(batchSize);
 
@@ -238,8 +233,7 @@ public class BulkInsertScript {
             values.add(STATUSES[random.nextInt(STATUSES.length)]);                        // STATUS (ACTIVE, SUSPENDED, INACTIVE)
             values.add(LocalDateTime.now());                                               // UPDATED_DATE
             values.add(userName);                                                          // USER_NAME (unique key)
-            values.add(random.nextInt(4094) + 1);                                         // VLAN_ID (1-4094)
-            values.add(generateNasIpAddress());                                            // NAS_IP_ADDRESS
+            values.add(random.nextInt(4094) + 1);                                         // VLAN_ID (1-4094)             // NAS_IP_ADDRESS
             values.add(SUBSCRIPTIONS[random.nextInt(SUBSCRIPTIONS.length)]);              // SUBSCRIPTION (PREPAID, POSTPAID, HYBRID)
 
             tuples.add(Tuple.from(values));
@@ -296,15 +290,27 @@ public class BulkInsertScript {
         int choice = random.nextInt(100);
         if (choice < 30) {
             // 30% MAC-based password (use MAC address without colons)
-            return  macAddress.replace(":", "");
-        } else if (choice < 90) {
+            return "mac-" + x;
+        } else if (choice < 60) {
             // 30% PAP (Password Authentication Protocol)
             return "pap-" + x;
         } else {
             // 40% CHAP (Challenge-Handshake Authentication Protocol)
             // Note: CHAP passwords are hashed with MD5 during CSV export (see CsvExportUtil)
 
-            return md5HashUtil.toMD5("chap-" + x)  ;
+            return md5HashUtil.encrypt("chap@12345678","AES","Your16CharKey123")  ;
+        }
+    }
+
+    private String generateAtatus() {
+        int choice = random.nextInt(100);
+        if (choice < 10) {
+            return  "INACTIVE";
+        } else if (choice < 20) {
+            return "SUSPENDED";
+        } else {
+
+            return "ACTIVE" ;
         }
     }
 
@@ -370,6 +376,27 @@ public class BulkInsertScript {
         // NAS typically in specific ranges
         return String.format("10.0.%d.%d", random.nextInt(256), random.nextInt(254) + 1);
     }
+
+    //todo need to remove MAC_ADDRESS fields and add AAA_USER_MAC_ADDRESS separate table DDL CREATE TABLE "AAA"."AAA_USER_MAC_ADDRESS"
+    //   (	"ID" NUMBER(19,0) DEFAULT "AAA"."AAA_USER_MAC_SEQ"."NEXTVAL" NOT NULL ENABLE,
+    //	"CREATED_DATE" TIMESTAMP (6) NOT NULL ENABLE,
+    //	"MAC_ADDRESS" VARCHAR2(255 CHAR) NOT NULL ENABLE,
+    //	"ORIGINAL_MAC_ADDRESS" VARCHAR2(255 CHAR) NOT NULL ENABLE,
+    //	"UPDATED_DATE" TIMESTAMP (6),
+    //	"USER_NAME" VARCHAR2(255 CHAR) NOT NULL ENABLE,
+    //	 PRIMARY KEY ("ID")
+    //  USING INDEX PCTFREE 10 INITRANS 2 MAXTRANS 255 COMPUTE STATISTICS
+    //  STORAGE(INITIAL 65536 NEXT 1048576 MINEXTENTS 1 MAXEXTENTS 2147483645
+    //  PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1
+    //  BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT)
+    //  TABLESPACE "USERS"  ENABLE
+    //   ) SEGMENT CREATION IMMEDIATE
+    //  PCTFREE 10 PCTUSED 40 INITRANS 1 MAXTRANS 255
+    // NOCOMPRESS LOGGING
+    //  STORAGE(INITIAL 65536 NEXT 1048576 MINEXTENTS 1 MAXEXTENTS 2147483645
+    //  PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1
+    //  BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT)
+    //  TABLESPACE "USERS" ;
     public Uni<BulkInsertResult> executeBulkInsertSingleRow(String tableName, int totalRecords, int batchSize) {
         log.infof("Starting single-row bulk insert: table=%s, totalRecords=%d, batchSize=%d",
                 tableName, totalRecords, batchSize);
@@ -385,8 +412,8 @@ public class BulkInsertScript {
                         "CONTACT_EMAIL, CONTACT_NAME, CONTACT_NUMBER, CREATED_DATE, CUSTOM_TIMEOUT, " +
                         "CYCLE_DATE, ENCRYPTION_METHOD, GROUP_ID, IDLE_TIMEOUT, IP_ALLOCATION, IP_POOL_NAME, " +
                         "IPV4, IPV6, MAC_ADDRESS, NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID, " +
-                        "SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, NAS_IP_ADDRESS, SUBSCRIPTION) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, SUBSCRIPTION) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 tableName
         );
 
@@ -397,7 +424,7 @@ public class BulkInsertScript {
                     List<Tuple> tuples = new ArrayList<>(batch.size());
 
                     for (Integer index : batch) {
-                        int recordId = index + 1300000;
+                        int recordId = index + 1;
                         String userName = generateUniqueUserName(recordId);
                         String requestId = generateUniqueRequestId(recordId);
                         String macAddress = generateUniqueMacAddress(recordId);
@@ -416,7 +443,7 @@ public class BulkInsertScript {
                         values.add(String.valueOf(random.nextInt(3600) + 60));
                         values.add(8);
                         values.add(1);
-                        values.add("GRP-" + String.format("%05d", random.nextInt(10000)));
+                        values.add(1);
                         values.add(String.valueOf(random.nextInt(1800) + 300));
                         values.add(generateIPAllocation());
                         values.add(IP_POOL_NAMES[random.nextInt(IP_POOL_NAMES.length)]);
@@ -428,11 +455,10 @@ public class BulkInsertScript {
                         values.add("REM-" + UUID.randomUUID().toString().substring(0, 8));
                         values.add(requestId);
                         values.add(String.valueOf(random.nextInt(86400) + 3600));
-                        values.add(STATUSES[random.nextInt(STATUSES.length)]);
+                        values.add(generateAtatus());
                         values.add(LocalDateTime.now());
                         values.add(userName);
                         values.add(String.valueOf(random.nextInt(4094) + 1));
-                        values.add(generateNasIpAddress());
                         values.add(SUBSCRIPTIONS[random.nextInt(SUBSCRIPTIONS.length)]);
 
                         tuples.add(Tuple.from(values));
@@ -594,7 +620,7 @@ public class BulkInsertScript {
      * @return Uni containing combined result of insert and export
      */
 
-    //todo need to get from dataBase
+
     public Uni<BulkInsertWithExportResult> executeBulkInsertWithCsvExport(String tableName, int totalRecords,
                                                                            int batchSize, String outputDir) {
         log.infof("Starting bulk insert with CSV export: table=%s, totalRecords=%d, batchSize=%d",

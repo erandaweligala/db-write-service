@@ -14,9 +14,11 @@ import org.jboss.logging.Logger;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Data Generator for BUCKET_INSTANCE table.
@@ -37,11 +39,11 @@ public class BucketInstanceDataGenerator {
      ReactiveRedisDataSource reactiveRedisDataSource;
     // Configuration constants - OPTIMIZED FOR HIGH THROUGHPUT
     private static final int BUCKET_INSTANCE = 1;
-    private static final int BATCH_SIZE = 5000; // Increased from 1000 for better throughput
-    private static final int PROGRESS_INTERVAL = 20000; // Less frequent logging
-    private static final int CONCURRENT_BATCHES = 5; // Increased from 1 for parallel processing
+    private static final int BATCH_SIZE = 400; // Increased from 1000 for better throughput
+    private static final int PROGRESS_INTERVAL = 5000; // Less frequent logging
+    private static final int CONCURRENT_BATCHES = 3; // Increased from 1 for parallel processing
 
-    private static final String[] TIME_WINDOWS = {"00-08", "00-24", "00-18", "18-24"};
+    private static final String[] TIME_WINDOWS = {"00-12", "00-24", "00-18", "18-24"};
     private static final String[] CONSUMPTION_LIMIT = {"1", "7", "30"};
     private static final String[] BUCKET_TYPES = {"DATA", "COMBO"};
     private static final String[] RULES = {"100Mbps", "200Mbps", "300Kbps", "1Gbps", "100kbps"};
@@ -230,7 +232,7 @@ public class BucketInstanceDataGenerator {
                 maxCarryForward,
                 PRIORITY[random.nextInt(PRIORITY.length)],
                 RULES[random.nextInt(RULES.length)],
-                String.valueOf(serviceId),
+                serviceId,
                 TIME_WINDOWS[random.nextInt(TIME_WINDOWS.length)],
                 totalCarryForward,
                 usage,
@@ -302,7 +304,7 @@ public class BucketInstanceDataGenerator {
             long maxCarryForward,
             int priority,
             String rule,
-            String serviceId,
+            long serviceId,
             String timeWindow,
             long totalCarryForward,
             long usage,
@@ -357,7 +359,7 @@ public class BucketInstanceDataGenerator {
         log.info("Retrieving user data from cache");
 
         return reactiveRedisDataSource.value(String.class)  // <── read as String
-                .get("serviceIds")
+                .get("serviceIdsx")
                 .onItem().transform(str -> {
                     if (str == null) {
                         log.info("No user data found in cache, will fetch from database");

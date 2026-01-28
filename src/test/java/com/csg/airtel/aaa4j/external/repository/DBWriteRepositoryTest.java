@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.external.repository;
 
+
 import com.csg.airtel.aaa4j.infrastructure.DatabaseCircuitBreaker;
 import com.csg.airtel.aaa4j.infrastructure.PerformanceMetrics;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -15,7 +16,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
-import java.time.LocalDateTime;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -317,26 +318,6 @@ class DBWriteRepositoryTest {
         var result = repository.update("users", columnValues, whereConditions);
 
         assertNotNull(result);
-    }
-
-    @Test
-    @DisplayName("Should handle UpdateOperation record")
-    void testUpdateOperationRecord() {
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("name", "John");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRepository.UpdateOperation operation = new DBWriteRepository.UpdateOperation(
-                "users",
-                columnValues,
-                whereConditions
-        );
-
-        assertEquals("users", operation.tableName());
-        assertEquals(columnValues, operation.columnValues());
-        assertEquals(whereConditions, operation.whereConditions());
     }
 
     @Test

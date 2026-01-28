@@ -14,7 +14,6 @@ import org.jboss.logging.Logger;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -37,9 +36,9 @@ public class ServiceInstanceDataGenerator {
      ReactiveRedisDataSource reactiveRedisDataSource;
     // Configuration constants - OPTIMIZED FOR HIGH THROUGHPUT
     private static final int SERVICES_PER_USER = 2;
-    private static final int BATCH_SIZE = 5000; // Increased from 1000 for better throughput
-    private static final int PROGRESS_INTERVAL = 20000; // Less frequent logging
-    private static final int CONCURRENT_BATCHES = 6; // Increased from 1 for parallel processing
+    private static final int BATCH_SIZE = 200; // Increased from 1000 for better throughput
+    private static final int PROGRESS_INTERVAL = 5000; // Less frequent logging
+    private static final int CONCURRENT_BATCHES = 2; // Increased from 1 for parallel processing
 
     // SERVICE_INSTANCE constants
     private static final String[] PLAN_IDS = {
@@ -200,12 +199,24 @@ public class ServiceInstanceDataGenerator {
                 cycleEndDate,                                 // CYCLE_END_DATE
                 cycleStartDate,                               // CYCLE_START_DATE
                 serviceStartDate,                             // SERVICE_START_DATE
-                STATUSES[random.nextInt(STATUSES.length)],    // STATUS
+                generateServiceStatus(),    // STATUS
                 now,                                          // UPDATED_AT
                 username,                                     // USERNAME
                 BILLING_TYPES[random.nextInt(BILLING_TYPES.length)], // BILLING
                 random.nextInt(28) + 1                        // CYCLE_DATE (1-28)
         );
+    }
+
+    private String generateServiceStatus() {
+        int choice = random.nextInt(100);
+
+        if (choice < 90) {
+            // 5% future (1-30 days ahead)
+            return "Active";
+        } else {
+            // 55% past (1-365 days ago)
+            return "Inactive";
+        }
     }
 
     /**
@@ -234,13 +245,9 @@ public class ServiceInstanceDataGenerator {
      * Generate EXPIRY_DATE - 50% before today, 50% after today
      */
     private LocalDateTime generateExpiryDate(LocalDateTime serviceStartDate) {
-        if (random.nextBoolean()) {
-            // 50% expired (before today)
-            return serviceStartDate.plusDays(random.nextInt(90) + 1);
-        } else {
             // 50% valid (future date)
             return serviceStartDate.plusDays(random.nextInt(365) + 90);
-        }
+
     }
 
     /**
@@ -360,7 +367,7 @@ public class ServiceInstanceDataGenerator {
         log.info("Retrieving user data from cache");
 
         return reactiveRedisDataSource.value(String.class)
-                .get("usernames")
+                .get("username")
                 .onItem().transform(value -> {
                     if (value == null) {
                         log.info("No user data found in cache, will fetch from database");

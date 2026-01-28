@@ -22,12 +22,15 @@ class DBWriteServiceTest {
     @Mock
     private DBWriteRepository mockRepository;
 
+    @Mock
+    private DBOperationsService dbOperationsService;
+
     private DBWriteService service;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        service = new DBWriteService(mockRepository);
+        service = new DBWriteService(mockRepository,dbOperationsService);
     }
 
     @Test

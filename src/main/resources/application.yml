@@ -7,58 +7,101 @@ quarkus:
     username: aaa
     password: Aaa!89nky78D
     reactive:
-      url: oracle:thin:@localhost:1522/ORCL
-      max-size: 100
-      event-loop-size: 10
-      idle-timeout: PT15M
-      max-lifetime: PT15M
+      url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
+      max-size: 30
+      event-loop-size: 20
+      idle-timeout: PT150M
+      max-lifetime: PT140M
       cache-prepared-statements: true
-      reconnect-attempts: 3
+      reconnect-attempts: 5
       reconnect-interval: PT2S
       shared: false
       name: oracle-pool
       additional-properties:
-        oracle.jdbc.implicitStatementCacheSize: "500"
+        oracle.jdbc.implicitStatementCacheSize: "200"
         oracle.jdbc.ReadTimeout: "300000"                  # 5 minutes for large batch operations
         oracle.net.CONNECT_TIMEOUT: "30000"                # Increased to 30s for connection establishment
         oracle.net.READ_TIMEOUT: "300000"                  # Socket-level read timeout (5 minutes)
         oracle.jdbc.loginTimeout: "60"                     # Login timeout in seconds
         oracle.jdbc.defaultRowPrefetch: "5000"
         oracle.net.keepAlive: "true"
-  otel:
-    enabled: false
-  vertx:
-    max-worker-execute-time: 600  # 10 minutes for large batch operations
-    warning-exception-time: 600   # 10 minutes before warning about blocking
-  # Redis Configuration - Optimized for 1000 TPS
-  redis:
-    hosts: redis://localhost:6379
-    timeout: 10s
-    max-pool-size: 100
-    max-pool-waiting: 200
+    jdbc:
+      url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
+      driver: oracle.jdbc.OracleDriver
+      max-size: 30
+      idle-timeout: PT150M
+      max-lifetime: PT140M
+      cache-prepared-statements: true
+      additional-properties:
+        oracle.jdbc.implicitStatementCacheSize: "200"
+        oracle.jdbc.ReadTimeout: "300000"
+        oracle.net.CONNECT_TIMEOUT: "30000"
+        oracle.net.READ_TIMEOUT: "300000"
+        oracle.jdbc.loginTimeout: "60"
+        oracle.jdbc.defaultRowPrefetch: "5000"
+        oracle.net.keepAlive: "true"
 
-  log:
-    level: INFO
-    console:
-      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+
   console:
     color: true
-# Pool Configuration
-#pool:
-#  max-size: 200                      # Max connections
-#  connection-timeout: 5000          # 5 seconds to acquire connection
-#  idle-timeout: 6000000              # 10 minutes idle before closing
-#  max-lifetime: 18000000             # 30 minutes max connection lifetime
-#  acquire-increment: 4              # Connections to acquire at once
-#  prepared-statement-cache-max-size: 256  # Cache prepared statements
-#  pipelining-enabled: true          # Enable query pipelining
-#  pipelining-limit: 400             # Max pipelined queries
-#  event-loop-size: 32               # Match vertx event-loops-pool-size
-#  tcp-keep-alive: true              # Detect dead connections
-#  tcp-no-delay: true                # Reduce latency
-#  pool-cleaner-enabled: true        # Clean idle connections
-#  pool-cleaner-interval: 60000      # Clean every minute
+  log:
+    level: DEBUG
+    file:
+      path: /var/log/db-write/db-write.log
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+      rotation:
+        max-file-size: 100M
+        max-backup-index: 10
+        rotate-on-boot: true
+    console:
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+    category:
+      "org.apache.kafka":
+        level: WARN
+      "io.smallrye.reactive.messaging.kafka":
+        level: DEBUG
+      "io.quarkus.config":
+        level: DEBUG
+      "io.smallrye.config":
+        level: DEBUG
+      "com.csg.airtel.aaa4j":
+        level: DEBUG
 
+  redis:
+    client-type: sentinel
+    hosts: redis://redis-cluster.cluster-redis.svc.cluster.local:26379
+    master-name: mymaster
+    role: master
+    password: AAAtest_Redis_Pass_w0rd!
+    max-pool-size: 300
+    max-waiting-handlers: 5000
+    max-pool-waiting: 800
+    pool-recycle-timeout: 240000
+    reconnect-attempts: 3
+    reconnect-interval: 500
+    pool-cleaner-interval: 20000
+    timeout: 60000
+
+pool:
+  max-size: 50                      # Max connections
+  connection-timeout: 5000          # 5 seconds to acquire connection
+  idle-timeout: 600000              # 10 minutes idle before closing
+  max-lifetime: 1800000             # 30 minutes max connection lifetime
+  acquire-increment: 4              # Connections to acquire at once
+  prepared-statement-cache-max-size: 256  # Cache prepared statements
+  pipelining-enabled: true          # Enable query pipelining
+  pipelining-limit: 256             # Max pipelined queries
+  event-loop-size: 32               # Match vertx event-loops-pool-size
+  tcp-keep-alive: true              # Detect dead connections
+  tcp-no-delay: true                # Reduce latency
+  pool-cleaner-enabled: true        # Clean idle connections
+  pool-cleaner-interval: 60000      # Clean every minute
+
+# Kafka Configuration
+
+kafka:
+  bootstrap:
+    servers: kafka-headless.cluster-dc.svc.cluster.local:9092
 
 mp:
   messaging:
@@ -66,18 +109,29 @@ mp:
       db-write-events:
         connector: smallrye-kafka
         topic: DC-DR
-        bootstrap.servers: localhost:9092
         group.id: accounting-dc-group
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
-        enable.auto.commit: false          # Changed from true for better reliability
-        max.poll.records: 500              # Increased from 100 for higher throughput
-        max.poll.interval.ms: 60000        # Reduced from 300000 (5min to 1min)
+        enable.auto.commit: false
+        max.poll.records: 100
+        max.poll.interval.ms: 300000
         session.timeout.ms: 30000
-        fetch.min.bytes: 1024              # Minimum bytes to fetch per poll
-        fetch.max.wait.ms: 500             # Max wait time for fetch
-        max.partition.fetch.bytes: 1048576 # 1MB per partition
-        failure-strategy: dead-letter-queue # Changed from ignore to handle failures properly
-        dead-letter-queue.topic: DC-DR-DLQ # Dead letter queue topic
-        throttled.unprocessed-record-max-age.ms: 60000 # Max age for unprocessed records
+        failure-strategy: ignore
+
+
+      db-write-events-dr:
+        connector: smallrye-kafka
+        topic: dc-provisioning
+        group.id: accounting-dc-group
+        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
+        value.deserializer.class: com.csg.airtel.aaa4j.domain.model.DBWriteRequest
+        value.deserializer.trusted-packages: "*"
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: earliest
+        enable.auto.commit: false
+        max.poll.records: 100
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 30000
+        failure-strategy: ignore
+ 

@@ -5,6 +5,7 @@ import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.Row;
 import io.vertx.mutiny.sqlclient.RowSet;
+import io.vertx.mutiny.sqlclient.Tuple;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
@@ -16,7 +17,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Utility class for exporting database records to CSV files.
@@ -33,8 +38,17 @@ public class CsvExportUtil {
     private static final Logger log = Logger.getLogger(CsvExportUtil.class);
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
     private static final DateTimeFormatter CSV_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final int BATCH_SIZE = 10000;
+    private static final int BATCH_SIZE = 5000;
     private static final int PROGRESS_INTERVAL = 50000;
+
+
+
+    private static final Pattern MD5_PATTERN =
+            Pattern.compile("^[a-fA-F0-9]{32}$");
+
+    // HEX (not MD5) → only hex chars, length != 32
+    private static final Pattern HEX_PATTERN =
+            Pattern.compile("^[a-fA-F0-9]+$");
 
     private static final String[] CSV_HEADERS = {
             "USER_ID", "BANDWIDTH", "BILLING", "BILLING_ACCOUNT_REF", "CIRCUIT_ID", "CONCURRENCY",
@@ -129,10 +143,14 @@ public class CsvExportUtil {
                         return fetchBatch(tableName, offset, BATCH_SIZE)
                                 .onItem().invoke(rows -> {
                                     try {
+                                        List<String> arrays = new ArrayList<>();
                                         for (Row row : rows) {
                                             String csvLine = rowToCsvLine(row);
-                                            writer.write(csvLine);
-                                            writer.newLine();
+                                                log.infof("user name %s" ,getString(row, "USER_NAME"));
+                                                arrays.add(getString(row, "USER_NAME"));
+                                                writer.write(csvLine);
+                                                writer.newLine();
+
 
                                             int count = exportedCount.incrementAndGet();
                                             if (count % PROGRESS_INTERVAL == 0) {
@@ -143,6 +161,7 @@ public class CsvExportUtil {
                                                         count, totalRecords, percent, rps);
                                             }
                                         }
+                                        log.infof(" set update ");
                                         writer.flush();
                                     } catch (IOException e) {
                                         throw new RuntimeException("Failed to write to CSV", e);
@@ -169,6 +188,98 @@ public class CsvExportUtil {
             log.errorf(e, "Failed to create CSV writer");
             return Uni.createFrom().failure(e);
         }
+    }
+
+//    private Uni<Integer> exportRecordsInBatches(String tableName, Path outputPath,
+//                                                long totalRecords, AtomicInteger exportedCount, long startTime) {
+//        try {
+//            BufferedWriter writer = Files.newBufferedWriter(outputPath);
+//
+//            // Write CSV header
+//            writer.write(String.join(",", CSV_HEADERS));
+//            writer.newLine();
+//
+//            int totalBatches = (int) ((totalRecords + BATCH_SIZE - 1) / BATCH_SIZE);
+//
+//            return Multi.createFrom().range(0, totalBatches)
+//                    .onItem().transformToUniAndConcatenate(batchIndex -> {
+//                        int offset = batchIndex * BATCH_SIZE;
+//                        return fetchBatch(tableName, offset, BATCH_SIZE)
+//                                .onItem().transformToUni(rows -> {
+//                                    try {
+//                                        List<String> arrays = new ArrayList<>();
+//                                        for (Row row : rows) {
+//                                            String password = getString(row, "PASSWORD");
+//                                            String identify = identify(password);
+//                                            if("MD5_HASH".equals(identify)) {
+//                                                String csvLine = rowToCsvLine(row);
+//                                                log.infof("user name %s", getString(row, "USER_NAME"));
+//                                                arrays.add(getString(row, "USER_NAME"));
+//                                                writer.write(csvLine);
+//                                                writer.newLine();
+//                                            }
+//
+//                                            int count = exportedCount.incrementAndGet();
+//                                            if (count % PROGRESS_INTERVAL == 0) {
+//                                                long elapsed = System.currentTimeMillis() - startTime;
+//                                                double rps = count * 1000.0 / elapsed;
+//                                                double percent = (count * 100.0) / totalRecords;
+//                                                log.infof("Export progress: %d/%d (%.1f%%) | %.0f rec/s",
+//                                                        count, totalRecords, percent, rps);
+//                                            }
+//                                        }
+//                                        writer.flush();
+//
+//                                        // Properly chain the update operation
+//                                        if (!arrays.isEmpty()) {
+//                                            log.infof("set update");
+//                                            return updatePassword(arrays)
+//                                                    .onItem().invoke(rowCount -> {
+//                                                        log.infof("Updated %d rows", rowCount);
+//                                                    })
+//                                                    .replaceWith(rows); // Return the original rows
+//                                        }
+//                                        return Uni.createFrom().item(rows);
+//                                    } catch (IOException e) {
+//                                        throw new RuntimeException("Failed to write to CSV", e);
+//                                    }
+//                                });
+//                    })
+//                    .collect().asList()
+//                    .map(results -> {
+//                        try {
+//                            writer.close();
+//                        } catch (IOException e) {
+//                            log.warnf("Failed to close writer: %s", e.getMessage());
+//                        }
+//                        return exportedCount.get();
+//                    })
+//                    .onFailure().invoke(e -> {
+//                        try {
+//                            writer.close();
+//                        } catch (IOException ex) {
+//                            log.warnf("Failed to close writer on failure: %s", ex.getMessage());
+//                        }
+//                    });
+//        } catch (IOException e) {
+//            log.errorf(e, "Failed to create CSV writer");
+//            return Uni.createFrom().failure(e);
+//        }
+//    }
+    public Uni<Integer> updatePassword(List<String> ids) {
+
+        log.infof("Updating password for %d users", ids.size());
+
+        String sql = "UPDATE AAA_USER SET PASSWORD = ? WHERE USER_NAME IN (" +
+                ids.stream().map(i -> "?").collect(Collectors.joining(",")) + ")";
+
+        Tuple tuple = Tuple.tuple();
+        tuple.addString(md5HashUtil.toMD5("chap@123456789"));
+        ids.forEach(tuple::addString);
+
+        return client.preparedQuery(sql)
+                .execute(tuple)
+                .map(result -> result.rowCount());
     }
 
     /**
@@ -232,11 +343,12 @@ public class CsvExportUtil {
         String macAddress = getString(row, "MAC_ADDRESS");
         sb.append(escapeCSV(formatMacAddress(macAddress))).append(",");
         // NAS_PORT_TYPE
-        sb.append(escapeCSV(getString(row, "NAS_PORT_TYPE"))).append(",");
+   //     sb.append(escapeCSV(getString(row, "NAS_PORT_TYPE"))).append(",");
         // PASSWORD - Hash CHAP passwords with MD5
         String password = getString(row, "PASSWORD");
-        String processedPassword = md5HashUtil.hashIfChap(password);
-        sb.append(escapeCSV(processedPassword)).append(",");
+        sb.append(escapeCSV(password)).append(",");
+        sb.append(escapeCSV(getString(row, "USER_NAME"))).append(",");
+
         // REMOTE_ID
     //    sb.append(escapeCSV(getString(row, "REMOTE_ID"))).append(",");
         // REQUEST_ID
@@ -248,11 +360,11 @@ public class CsvExportUtil {
         // UPDATED_DATE
     //    sb.append(escapeCSV(getDateString(row, "UPDATED_DATE"))).append(",");
         // USER_NAME
-        sb.append(escapeCSV(getString(row, "USER_NAME"))).append(",");
+
         // VLAN_ID
   //      sb.append(escapeCSV(getString(row, "VLAN_ID"))).append(",");
         // NAS_IP_ADDRESS
-        sb.append(escapeCSV(getString(row, "NAS_IP_ADDRESS"))).append(",");
+    //    sb.append(escapeCSV(getString(row, "NAS_IP_ADDRESS"))).append(",");
         // SUBSCRIPTION
      //   sb.append(escapeCSV(getString(row, "SUBSCRIPTION")));
 
@@ -340,6 +452,31 @@ public class CsvExportUtil {
                     return row.getLong("CNT");
                 });
     }
+
+    public static String identify(String value) {
+        if (value == null || value.isBlank()) {
+            return "INVALID";
+        }
+
+        if (isMD5(value)) {
+            return "MD5_HASH";
+        }
+
+        if (isHex(value)) {
+            return "HEX_VALUE";
+        }
+
+        return "NORMAL_STRING";
+    }
+
+    private static boolean isMD5(String value) {
+        return MD5_PATTERN.matcher(value).matches();
+    }
+
+    private static boolean isHex(String value) {
+        return HEX_PATTERN.matcher(value).matches();
+    }
+
 
     /**
      * Result record for CSV export operations.
