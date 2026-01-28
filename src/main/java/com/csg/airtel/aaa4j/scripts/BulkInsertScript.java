@@ -181,17 +181,18 @@ public class BulkInsertScript {
      * Schema: USER_ID, BANDWIDTH, BILLING, BILLING_ACCOUNT_REF, CIRCUIT_ID, CONCURRENCY,
      *         CONTACT_EMAIL, CONTACT_NAME, CONTACT_NUMBER, CREATED_DATE, CUSTOM_TIMEOUT,
      *         CYCLE_DATE, ENCRYPTION_METHOD, GROUP_ID, IDLE_TIMEOUT, IP_ALLOCATION, IP_POOL_NAME,
-     *         IPV4, IPV6, MAC_ADDRESS, NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID,
+     *         IPV4, IPV6, NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID,
      *         SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, NAS_IP_ADDRESS, SUBSCRIPTION
+     * Note: MAC_ADDRESS is stored in separate AAA_USER_MAC_ADDRESS table
      */
     private Uni<Integer> insertBatch(String tableName, int startIndex, int batchSize) {
         String sql = "INSERT INTO " + tableName + " " +
                 "(USER_ID, BANDWIDTH, BILLING, BILLING_ACCOUNT_REF, CIRCUIT_ID, CONCURRENCY, " +
                 "CONTACT_EMAIL, CONTACT_NAME, CONTACT_NUMBER, CREATED_DATE, CUSTOM_TIMEOUT, " +
                 "CYCLE_DATE, ENCRYPTION_METHOD, GROUP_ID, IDLE_TIMEOUT, IP_ALLOCATION, IP_POOL_NAME, " +
-                "IPV4, IPV6, MAC_ADDRESS, NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID, " +
+                "IPV4, IPV6, NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID, " +
                 "SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, SUBSCRIPTION) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         List<Tuple> tuples = new ArrayList<>(batchSize);
 
@@ -224,7 +225,6 @@ public class BulkInsertScript {
             values.add(IP_POOL_NAMES[random.nextInt(IP_POOL_NAMES.length)]);              // IP_POOL_NAME
             values.add(generateIPv4());                                                    // IPV4
             values.add(generateIPv6());                                                    // IPV6
-            values.add(macAddress.replace(":", ""));                                       // MAC_ADDRESS (unique, stored without colons)
             values.add(NAS_PORT_TYPES[random.nextInt(NAS_PORT_TYPES.length)]);            // NAS_PORT_TYPE
             values.add(generatePassword(macAddress,i));                                      // PASSWORD (30% MAC, 30% PAP, 40% CHAP)
             values.add("REM-" + UUID.randomUUID().toString().substring(0, 8));            // REMOTE_ID
@@ -243,6 +243,53 @@ public class BulkInsertScript {
                 .executeBatch(tuples)
                 .map(result -> batchSize)
                 .onFailure().retry().atMost(3)
+                .onFailure().recoverWithItem(0)
+                .chain(insertedCount -> {
+                    // After main insert succeeds, insert MAC addresses into separate table
+                    if (insertedCount > 0) {
+                        return insertMacAddressBatch(startIndex, batchSize)
+                                .map(macCount -> insertedCount); // Return the original count
+                    }
+                    return Uni.createFrom().item(insertedCount);
+                });
+    }
+
+    /**
+     * Insert MAC addresses into AAA_USER_MAC_ADDRESS table
+     * This is called after the main user table insert to maintain referential integrity
+     *
+     * @param startIndex Starting record index
+     * @param batchSize Number of records in this batch
+     * @return Uni containing the number of inserted records
+     */
+    private Uni<Integer> insertMacAddressBatch(int startIndex, int batchSize) {
+        String sql = "INSERT INTO AAA_USER_MAC_ADDRESS " +
+                "(USER_NAME, MAC_ADDRESS, ORIGINAL_MAC_ADDRESS, CREATED_DATE, UPDATED_DATE) " +
+                "VALUES (?, ?, ?, ?, ?)";
+
+        List<Tuple> tuples = new ArrayList<>(batchSize);
+
+        for (int i = 0; i < batchSize; i++) {
+            int recordId = startIndex + i + 1;
+            String userName = "USER_" + String.format("%08d", recordId);
+            String macAddressWithColons = generateUniqueMacAddress(recordId);
+            String macAddressNormalized = macAddressWithColons.replace(":", "").toLowerCase();
+
+            List<Object> values = new ArrayList<>(5);
+            values.add(userName);                        // USER_NAME (references AAA_USER.USER_NAME)
+            values.add(macAddressNormalized);           // MAC_ADDRESS (normalized: no colons, lowercase)
+            values.add(macAddressWithColons);           // ORIGINAL_MAC_ADDRESS (with colons)
+            values.add(LocalDateTime.now());            // CREATED_DATE
+            values.add(LocalDateTime.now());            // UPDATED_DATE
+
+            tuples.add(Tuple.from(values));
+        }
+
+        return client.preparedQuery(sql)
+                .executeBatch(tuples)
+                .map(result -> batchSize)
+                .onFailure().retry().atMost(3)
+                .onFailure().invoke(e -> log.errorf(e, "Failed to insert MAC addresses for batch starting at %d", startIndex))
                 .onFailure().recoverWithItem(0);
     }
 
@@ -377,26 +424,10 @@ public class BulkInsertScript {
         return String.format("10.0.%d.%d", random.nextInt(256), random.nextInt(254) + 1);
     }
 
-    //todo need to remove MAC_ADDRESS fields and add AAA_USER_MAC_ADDRESS separate table DDL CREATE TABLE "AAA"."AAA_USER_MAC_ADDRESS"
-    //   (	"ID" NUMBER(19,0) DEFAULT "AAA"."AAA_USER_MAC_SEQ"."NEXTVAL" NOT NULL ENABLE,
-    //	"CREATED_DATE" TIMESTAMP (6) NOT NULL ENABLE,
-    //	"MAC_ADDRESS" VARCHAR2(255 CHAR) NOT NULL ENABLE,
-    //	"ORIGINAL_MAC_ADDRESS" VARCHAR2(255 CHAR) NOT NULL ENABLE,
-    //	"UPDATED_DATE" TIMESTAMP (6),
-    //	"USER_NAME" VARCHAR2(255 CHAR) NOT NULL ENABLE,
-    //	 PRIMARY KEY ("ID")
-    //  USING INDEX PCTFREE 10 INITRANS 2 MAXTRANS 255 COMPUTE STATISTICS
-    //  STORAGE(INITIAL 65536 NEXT 1048576 MINEXTENTS 1 MAXEXTENTS 2147483645
-    //  PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1
-    //  BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT)
-    //  TABLESPACE "USERS"  ENABLE
-    //   ) SEGMENT CREATION IMMEDIATE
-    //  PCTFREE 10 PCTUSED 40 INITRANS 1 MAXTRANS 255
-    // NOCOMPRESS LOGGING
-    //  STORAGE(INITIAL 65536 NEXT 1048576 MINEXTENTS 1 MAXEXTENTS 2147483645
-    //  PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1
-    //  BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT)
-    //  TABLESPACE "USERS" ;
+    /**
+     * Alternative bulk insert method using single-row inserts with batched execution.
+     * MAC_ADDRESS data is automatically inserted into the separate AAA_USER_MAC_ADDRESS table.
+     */
     public Uni<BulkInsertResult> executeBulkInsertSingleRow(String tableName, int totalRecords, int batchSize) {
         log.infof("Starting single-row bulk insert: table=%s, totalRecords=%d, batchSize=%d",
                 tableName, totalRecords, batchSize);
@@ -411,9 +442,9 @@ public class BulkInsertScript {
                 "INSERT INTO %s (USER_ID, BANDWIDTH, BILLING, BILLING_ACCOUNT_REF, CIRCUIT_ID, CONCURRENCY, " +
                         "CONTACT_EMAIL, CONTACT_NAME, CONTACT_NUMBER, CREATED_DATE, CUSTOM_TIMEOUT, " +
                         "CYCLE_DATE, ENCRYPTION_METHOD, GROUP_ID, IDLE_TIMEOUT, IP_ALLOCATION, IP_POOL_NAME, " +
-                        "IPV4, IPV6, MAC_ADDRESS, NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID, " +
+                        "IPV4, IPV6, NAS_PORT_TYPE, PASSWORD, REMOTE_ID, REQUEST_ID, " +
                         "SESSION_TIMEOUT, STATUS, UPDATED_DATE, USER_NAME, VLAN_ID, SUBSCRIPTION) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 tableName
         );
 
@@ -449,7 +480,6 @@ public class BulkInsertScript {
                         values.add(IP_POOL_NAMES[random.nextInt(IP_POOL_NAMES.length)]);
                         values.add(generateIPv4());
                         values.add(generateIPv6());
-                        values.add(macAddress.replace(":", ""));
                         values.add(NAS_PORT_TYPES[random.nextInt(NAS_PORT_TYPES.length)]);
                         values.add(generatePassword(macAddress,recordId));
                         values.add("REM-" + UUID.randomUUID().toString().substring(0, 8));
@@ -463,6 +493,8 @@ public class BulkInsertScript {
 
                         tuples.add(Tuple.from(values));
                     }
+
+                    int batchStartIndex = batch.get(0); // First index in this batch
 
                     return client.preparedQuery(sql)
                             .executeBatch(tuples)
@@ -480,7 +512,15 @@ public class BulkInsertScript {
                                 failedCount.addAndGet(batch.size());
                                 log.errorf(e, "Batch insert failed: %s", e.getMessage());
                             })
-                            .onFailure().recoverWithItem(0);
+                            .onFailure().recoverWithItem(0)
+                            .chain(rowCount -> {
+                                // After main insert succeeds, insert MAC addresses into separate table
+                                if (rowCount > 0) {
+                                    return insertMacAddressBatch(batchStartIndex, batch.size())
+                                            .map(macCount -> rowCount); // Return the original row count
+                                }
+                                return Uni.createFrom().item(rowCount);
+                            });
                 })
                 .collect().asList()
                 .map(results -> {
@@ -679,7 +719,6 @@ public class BulkInsertScript {
                         IP_POOL_NAME VARCHAR2(100),
                         IPV4 VARCHAR2(15),
                         IPV6 VARCHAR2(45),
-                        MAC_ADDRESS VARCHAR2(17) UNIQUE,
                         NAS_PORT_TYPE VARCHAR2(50),
                         PASSWORD VARCHAR2(255),
                         REMOTE_ID VARCHAR2(100),
