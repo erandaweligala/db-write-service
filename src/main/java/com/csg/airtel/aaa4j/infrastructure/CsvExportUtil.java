@@ -270,6 +270,7 @@ public class CsvExportUtil {
 
         log.infof("Updating password for %d users", ids.size());
 
+        //todo need join table AAA_USER_MAC_ADDRESS get field ORIGINAL_MAC_ADDRESS
         String sql = "UPDATE AAA_USER SET PASSWORD = ? WHERE USER_NAME IN (" +
                 ids.stream().map(i -> "?").collect(Collectors.joining(",")) + ")";
 

@@ -49,7 +49,7 @@ public class BulkInsertScript {
 
     // Data generation constants
     private static final String[] NAS_PORT_TYPES = {"Ethernet", "Wireless-802.11", "Virtual", "Async", "ISDN-Sync", "ISDN-Async-V120", "ISDN-Async-V110", "DSL"};
-    private static final String[] STATUSES = {"ACTIVE", "SUSPENDED", "INACTIVE"};
+    private static final String[] STATUSES = {"ACTIVE", "BARRED", "INACTIVE"};
     private static final String[] SUBSCRIPTIONS = {"PREPAID", "POSTPAID", "HYBRID"};
     private static final String[] ENCRYPTION_METHODS = {"WPA2", "WPA3", "AES-256", "TLS1.3", "NONE"};
     private static final String[] IP_POOL_NAMES = {"POOL_RESIDENTIAL", "POOL_BUSINESS", "POOL_ENTERPRISE", "POOL_MOBILE", "POOL_DEFAULT"};
@@ -357,10 +357,10 @@ public class BulkInsertScript {
 
     private String generateAtatus() {
         int choice = random.nextInt(100);
-        if (choice < 10) {
+        if (choice < 5) {
             return  "INACTIVE";
-        } else if (choice < 20) {
-            return "SUSPENDED";
+        } else if (choice < 10) {
+            return "BARRED";
         } else {
 
             return "ACTIVE" ;

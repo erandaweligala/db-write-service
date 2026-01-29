@@ -4,10 +4,11 @@ quarkus:
     port: 8085
   datasource:
     db-kind: oracle
-    username: aaa
-    password: Aaa!89nky78D
+    username: CYA_AAA_OPS
+    password: UkkaNk8KnAPp19!
     reactive:
-      url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
+      #url: oracle:thin:@localhost:1521/FREEPDB1
+      url: oracle:thin:@172.24.0.203:1908/ORCL
       max-size: 30
       event-loop-size: 20
       idle-timeout: PT150M
@@ -26,7 +27,7 @@ quarkus:
         oracle.jdbc.defaultRowPrefetch: "5000"
         oracle.net.keepAlive: "true"
     jdbc:
-      url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
+      url: oracle:thin:@localhost:1522/ORCL
       driver: oracle.jdbc.OracleDriver
       max-size: 30
       idle-timeout: PT150M
@@ -67,20 +68,32 @@ quarkus:
       "com.csg.airtel.aaa4j":
         level: DEBUG
 
+#  redis:
+#    client-type: sentinel
+#    hosts: redis://redis-cluster.cluster-redis.svc.cluster.local:26379
+#    master-name: mymaster
+#    role: master
+#    password: AAAtest_Redis_Pass_w0rd!
+#    max-pool-size: 300
+#    max-waiting-handlers: 5000
+#    max-pool-waiting: 800
+#    pool-recycle-timeout: 240000
+#    reconnect-attempts: 3
+#    reconnect-interval: 500
+#    pool-cleaner-interval: 20000
+#    timeout: 60000
+
   redis:
-    client-type: sentinel
-    hosts: redis://redis-cluster.cluster-redis.svc.cluster.local:26379
-    master-name: mymaster
-    role: master
-    password: AAAtest_Redis_Pass_w0rd!
-    max-pool-size: 300
-    max-waiting-handlers: 5000
-    max-pool-waiting: 800
+    hosts: redis://localhost:6379
+    max-pool-size: 600
+    max-waiting-handlers: 12000
+    max-pool-waiting: 3000
     pool-recycle-timeout: 240000
     reconnect-attempts: 3
     reconnect-interval: 500
     pool-cleaner-interval: 20000
-    timeout: 60000
+    response-timeout: 3000
+    connection-timeout: 2000
 
 pool:
   max-size: 50                      # Max connections
@@ -99,16 +112,16 @@ pool:
 
 # Kafka Configuration
 
-kafka:
-  bootstrap:
-    servers: kafka-headless.cluster-dc.svc.cluster.local:9092
+#kafka:
+#  bootstrap:
+#    servers: kafka-headless.cluster-dc.svc.cluster.local:9092
 
 mp:
   messaging:
     incoming:
       db-write-events:
         connector: smallrye-kafka
-        topic: DC-DR
+        topic: dctodr-dc
         group.id: accounting-dc-group
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -134,4 +147,4 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         failure-strategy: ignore
- 
+
