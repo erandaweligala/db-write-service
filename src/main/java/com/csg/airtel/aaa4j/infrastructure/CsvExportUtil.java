@@ -270,13 +270,20 @@ public class CsvExportUtil {
 
         log.infof("Updating password for %d users", ids.size());
 
-        //todo need join table AAA_USER_MAC_ADDRESS get field ORIGINAL_MAC_ADDRESS
-        String sql = "UPDATE AAA_USER SET PASSWORD = ? WHERE USER_NAME IN (" +
-                ids.stream().map(i -> "?").collect(Collectors.joining(",")) + ")";
+        // Join with AAA_USER_MAC_ADDRESS table to get ORIGINAL_MAC_ADDRESS
+        // Using MERGE statement to update based on join
+        String sql = "MERGE INTO AAA_USER u " +
+                "USING (SELECT m.USER_NAME, m.ORIGINAL_MAC_ADDRESS " +
+                "       FROM AAA_USER_MAC_ADDRESS m " +
+                "       WHERE m.USER_NAME IN (" +
+                ids.stream().map(i -> "?").collect(Collectors.joining(",")) + ")) src " +
+                "ON (u.USER_NAME = src.USER_NAME) " +
+                "WHEN MATCHED THEN " +
+                "UPDATE SET u.PASSWORD = ?";
 
         Tuple tuple = Tuple.tuple();
-        tuple.addString(md5HashUtil.toMD5("chap@123456789"));
         ids.forEach(tuple::addString);
+        tuple.addString(md5HashUtil.toMD5("chap@123456789"));
 
         return client.preparedQuery(sql)
                 .execute(tuple)
