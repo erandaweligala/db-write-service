@@ -18,16 +18,8 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * Data Generator for SERVICE_INSTANCE table only.
- *
- * Features:
- * - Fetches usernames from AAA_USER table
- * - Creates 2 SERVICE_INSTANCE records per username
- * - Generates realistic test data with specified distributions
- * - Batch processing for optimal performance using executeBatch to avoid Oracle bind variable limits
- * - Progress reporting and error handling
- */
+//todo this is heavey process need add thread sleep after proccesing
+
 @ApplicationScoped
 public class ServiceInstanceDataGenerator {
 

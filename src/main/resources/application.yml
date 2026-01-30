@@ -4,11 +4,11 @@ quarkus:
     port: 8085
   datasource:
     db-kind: oracle
-    username: CYA_AAA_OPS
-    password: UkkaNk8KnAPp19!
+    username: aaa
+    password: Aaa!89nky78D
     reactive:
       #url: oracle:thin:@localhost:1521/FREEPDB1
-      url: oracle:thin:@172.24.0.203:1908/ORCL
+      url: oracle:thin:@localhost:1522/ORCL
       max-size: 30
       event-loop-size: 20
       idle-timeout: PT150M
@@ -60,11 +60,11 @@ quarkus:
       "org.apache.kafka":
         level: WARN
       "io.smallrye.reactive.messaging.kafka":
-        level: DEBUG
+        level: INFO
       "io.quarkus.config":
-        level: DEBUG
+        level: INFO
       "io.smallrye.config":
-        level: DEBUG
+        level: INFO
       "com.csg.airtel.aaa4j":
         level: DEBUG
 
