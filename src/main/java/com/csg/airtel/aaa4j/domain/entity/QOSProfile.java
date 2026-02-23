@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.domain.entity;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "QOS_PROFILE")
@@ -26,6 +27,22 @@ public class QOSProfile {
     @Column(name = "DOWNLINK_SPEED", length = 255, nullable = false)
     private String downLink;
 
-    @Column(name = "IS_DEFAULT",nullable = false)
+    @Column(name = "IS_DEFAULT", nullable = false)
     private Boolean isDefault;
+
+    @Column(name = "CREATED_DATE", updatable = false)
+    private LocalDateTime createdDate;
+
+    @Column(name = "UPDATED_DATE")
+    private LocalDateTime updatedDate;
+
+    @PrePersist
+    protected void onCreate() {
+        createdDate = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedDate = LocalDateTime.now();
+    }
 }

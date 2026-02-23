@@ -86,9 +86,10 @@ mp:
         auto.offset.reset: earliest
         enable.auto.commit: false
         max.poll.records: 100
-        max.poll.interval.ms: 300000
-        session.timeout.ms: 30000
-        failure-strategy: ignore
+        max.poll.interval.ms: 10000   # ← was 300000 (5 min), reduced to match reply window
+        session.timeout.ms: 10000     # ← was 30000, aligned with Spring consumer
+        heartbeat.interval.ms: 3000   # ← added, must be < session.timeout.ms / 3
+        failure-strategy: ignore      # OK — no reply needed on this channel
 
 
       db-write-events-dr:
@@ -102,7 +103,19 @@ mp:
         auto.offset.reset: earliest
         enable.auto.commit: false
         max.poll.records: 100
-        max.poll.interval.ms: 300000
-        session.timeout.ms: 30000
-        failure-strategy: ignore
- 
+        max.poll.interval.ms: 10000   # ← was 300000, reduced — must reply within 2s window
+        session.timeout.ms: 10000     # ← was 30000, aligned
+        heartbeat.interval.ms: 3000   # ← added
+        failure-strategy: fail        # ← was ignore — CRITICAL FIX: code calls nack(), ignore suppresses it
+
+    outgoing:
+
+      # ── Reply channel back to Spring ────────────────────────────────────
+      responses-out:
+        connector: smallrye-kafka
+        # No fixed topic — set dynamically per message via OutgoingKafkaRecordMetadata.withTopic()
+        key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        value.serializer: org.apache.kafka.common.serialization.StringSerializer
+        bootstrap.servers: kafka-headless.cluster-dc.svc.cluster.local:9092  # ← was localhost:9092, fixed to cluster DNS
+        linger.ms: 0   # Reply immediately — no batching delay
+        acks: 1        # Leader ACK sufficient for reply messages

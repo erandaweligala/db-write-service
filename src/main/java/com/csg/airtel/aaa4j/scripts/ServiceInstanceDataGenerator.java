@@ -18,8 +18,16 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-//todo this is heavey process need add thread sleep after proccesing
-
+/**
+ * Data Generator for SERVICE_INSTANCE table only.
+ *
+ * Features:
+ * - Fetches usernames from AAA_USER table
+ * - Creates 2 SERVICE_INSTANCE records per username
+ * - Generates realistic test data with specified distributions
+ * - Batch processing for optimal performance using executeBatch to avoid Oracle bind variable limits
+ * - Progress reporting and error handling
+ */
 @ApplicationScoped
 public class ServiceInstanceDataGenerator {
 
@@ -40,7 +48,6 @@ public class ServiceInstanceDataGenerator {
     };
 
     private static final String[] PLAN_TYPES = {"PREPAID", "POSTPAID", "HYBRID"};
-    private static final String[] STATUSES = {"Active", "Inactive"};
     private static final String[] BILLING_TYPES = {"MONTHLY", "QUARTERLY", "YEARLY", "USAGE_BASED"};
 
     private final Pool client;
@@ -202,7 +209,7 @@ public class ServiceInstanceDataGenerator {
     private String generateServiceStatus() {
         int choice = random.nextInt(100);
 
-        if (choice < 90) {
+        if (choice < 95) {
             // 5% future (1-30 days ahead)
             return "Active";
         } else {
@@ -238,7 +245,7 @@ public class ServiceInstanceDataGenerator {
      */
     private LocalDateTime generateExpiryDate(LocalDateTime serviceStartDate) {
             // 50% valid (future date)
-            return serviceStartDate.plusDays(random.nextInt(365) + 90);
+            return serviceStartDate.plusDays(90);
 
     }
 

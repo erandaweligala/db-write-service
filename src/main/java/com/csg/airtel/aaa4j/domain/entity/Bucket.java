@@ -1,9 +1,8 @@
 package com.csg.airtel.aaa4j.domain.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "BUCKET")
@@ -26,4 +25,20 @@ public class Bucket {
 
     @Column(name = "TIME_WINDOW")
     private String timeWindow;
+
+    @Column(name = "CREATED_DATE", updatable = false)
+    private LocalDateTime createdDate;
+
+    @Column(name = "UPDATED_DATE")
+    private LocalDateTime updatedDate;
+
+    @PrePersist
+    protected void onCreate() {
+        createdDate = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedDate = LocalDateTime.now();
+    }
 }

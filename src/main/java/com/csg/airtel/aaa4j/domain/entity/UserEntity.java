@@ -87,12 +87,6 @@ public class UserEntity {
     @Column(name = "SESSION_TIMEOUT")
     private String sessionTimeout;
 
-    @Column(name = "IDLE_TIMEOUT")
-    private String idleTimeout;
-
-    @Column(name = "CUSTOM_TIMEOUT")
-    private String customTimeout;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "subscription")
     private Subscription subscription;

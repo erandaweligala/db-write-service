@@ -43,10 +43,10 @@ public class BucketInstanceDataGenerator {
     private static final int PROGRESS_INTERVAL = 5000; // Less frequent logging
     private static final int CONCURRENT_BATCHES = 3; // Increased from 1 for parallel processing
 
-    private static final String[] TIME_WINDOWS = {"00-12", "00-24", "00-18", "18-24"};
+    private static final String[] TIME_WINDOWS = {"00-24"};
     private static final String[] CONSUMPTION_LIMIT = {"1", "7", "30"};
     private static final String[] BUCKET_TYPES = {"DATA", "COMBO"};
-    private static final String[] RULES = {"100Mbps", "200Mbps", "300Kbps", "1Gbps", "100kbps"};
+    private static final String[] RULES = {"Home_100Mbps", "Home_200Mbps", "Home_300Kbps", "Home_1Gbps", "Home_100kbps"};
     private static final int[] PRIORITY = {10,20};
 
     private final Pool client;
@@ -196,7 +196,7 @@ public class BucketInstanceDataGenerator {
         String bucketId = "BUCKET-" + serviceId + "-" + PRIORITY[random.nextInt(PRIORITY.length)];
 
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime expiration = now.plusDays(random.nextInt(365) + 30);
+        LocalDateTime expiration = now.plusDays(30);
 
         int isUnlimited = random.nextInt(10) < 2 ? 1 : 0; // 20% unlimited
 

@@ -4,49 +4,29 @@ quarkus:
     port: 8085
   datasource:
     db-kind: oracle
-    username: aaa
-    password: Aaa!89nky78D
+    username: CYA_AAA_OPS
+    password: UkkaNk8KnAPp19!
     reactive:
-      #url: oracle:thin:@localhost:1521/FREEPDB1
-      url: oracle:thin:@localhost:1522/ORCL
-      max-size: 30
-      event-loop-size: 20
-      idle-timeout: PT150M
-      max-lifetime: PT140M
-      cache-prepared-statements: true
-      reconnect-attempts: 5
-      reconnect-interval: PT2S
-      shared: false
-      name: oracle-pool
-      additional-properties:
-        oracle.jdbc.implicitStatementCacheSize: "200"
-        oracle.jdbc.ReadTimeout: "300000"                  # 5 minutes for large batch operations
-        oracle.net.CONNECT_TIMEOUT: "30000"                # Increased to 30s for connection establishment
-        oracle.net.READ_TIMEOUT: "300000"                  # Socket-level read timeout (5 minutes)
-        oracle.jdbc.loginTimeout: "60"                     # Login timeout in seconds
-        oracle.jdbc.defaultRowPrefetch: "5000"
-        oracle.net.keepAlive: "true"
+      url: oracle:thin:@172.24.0.203:1908/AAA
     jdbc:
-      url: oracle:thin:@localhost:1522/ORCL
+      url: oracle:thin:@172.24.0.203:1908/AAA
       driver: oracle.jdbc.OracleDriver
-      max-size: 30
-      idle-timeout: PT150M
-      max-lifetime: PT140M
-      cache-prepared-statements: true
-      additional-properties:
-        oracle.jdbc.implicitStatementCacheSize: "200"
-        oracle.jdbc.ReadTimeout: "300000"
-        oracle.net.CONNECT_TIMEOUT: "30000"
-        oracle.net.READ_TIMEOUT: "300000"
-        oracle.jdbc.loginTimeout: "60"
-        oracle.jdbc.defaultRowPrefetch: "5000"
-        oracle.net.keepAlive: "true"
+
+  vertx:
+    # High-TPS optimization: Match event loops to CPU cores for optimal performance
+    event-loops-pool-size: 8
+    internal-blocking-pool-size: 100
+    warning-exception-time: 10s
+    max-event-loop-execute-time: 5s
+    max-worker-execute-time: 60s
+    prefer-native-transport: true
+    caching: false
 
 
   console:
     color: true
   log:
-    level: DEBUG
+    level: INFO
     file:
       path: /var/log/db-write/db-write.log
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
@@ -58,7 +38,7 @@ quarkus:
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
     category:
       "org.apache.kafka":
-        level: WARN
+        level: INFO
       "io.smallrye.reactive.messaging.kafka":
         level: INFO
       "io.quarkus.config":
@@ -66,25 +46,14 @@ quarkus:
       "io.smallrye.config":
         level: INFO
       "com.csg.airtel.aaa4j":
-        level: DEBUG
-
-#  redis:
-#    client-type: sentinel
-#    hosts: redis://redis-cluster.cluster-redis.svc.cluster.local:26379
-#    master-name: mymaster
-#    role: master
-#    password: AAAtest_Redis_Pass_w0rd!
-#    max-pool-size: 300
-#    max-waiting-handlers: 5000
-#    max-pool-waiting: 800
-#    pool-recycle-timeout: 240000
-#    reconnect-attempts: 3
-#    reconnect-interval: 500
-#    pool-cleaner-interval: 20000
-#    timeout: 60000
+        level: INFO
 
   redis:
-    hosts: redis://localhost:6379
+    client-type: sentinel
+    hosts: redis://redis-cluster.csg-aaa-query-cache.svc.cluster.local:26379
+    master-name: mymaster
+    role: master
+    password: S3cure_Redis_Pass_w0rd!
     max-pool-size: 600
     max-waiting-handlers: 12000
     max-pool-waiting: 3000
@@ -92,11 +61,11 @@ quarkus:
     reconnect-attempts: 3
     reconnect-interval: 500
     pool-cleaner-interval: 20000
-    response-timeout: 3000
-    connection-timeout: 2000
+    timeout: 120000
+
 
 pool:
-  max-size: 50                      # Max connections
+  max-size: 32                      # Max connections
   connection-timeout: 5000          # 5 seconds to acquire connection
   idle-timeout: 600000              # 10 minutes idle before closing
   max-lifetime: 1800000             # 30 minutes max connection lifetime
@@ -112,9 +81,9 @@ pool:
 
 # Kafka Configuration
 
-#kafka:
-#  bootstrap:
-#    servers: kafka-headless.cluster-dc.svc.cluster.local:9092
+kafka:
+  bootstrap:
+    servers: kafka-headless.csg-aaa-query-cache.svc.cluster.local:9092
 
 mp:
   messaging:
@@ -147,4 +116,4 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         failure-strategy: ignore
-
+ 
