@@ -3,6 +3,9 @@ package com.csg.airtel.aaa4j.domain.service;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.external.repository.DBWriteRepository;
 import io.smallrye.mutiny.Uni;
+import io.vertx.mutiny.sqlclient.Pool;
+import io.vertx.mutiny.sqlclient.SqlClient;
+import io.vertx.mutiny.sqlclient.SqlConnection;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
@@ -10,10 +13,14 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @DisplayName("DBWriteService Tests")
@@ -25,12 +32,15 @@ class DBWriteServiceTest {
     @Mock
     private DBOperationsService dbOperationsService;
 
+    @Mock
+    private Pool mockPool;
+
     private DBWriteService service;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        service = new DBWriteService(mockRepository,dbOperationsService);
+        service = new DBWriteService(mockRepository, dbOperationsService, mockPool);
     }
 
     @Test
@@ -513,5 +523,143 @@ class DBWriteServiceTest {
         // Verify
         assertNotNull(result);
         verify(mockRepository, times(1)).update(anyString(), any(Map.class), any(Map.class));
+    }
+
+    // -----------------------------------------------------------------------
+    // processEvent transaction tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("processEvent should use transaction when related writes exist")
+    @SuppressWarnings("unchecked")
+    void testProcessEventUsesTransactionForRelatedWrites() {
+        // Setup
+        Map<String, Object> columnValues = Map.of("name", "John");
+
+        DBWriteRequest relatedWrite = DBWriteRequest.builder()
+                .eventType("DELETE")
+                .tableName("related_table")
+                .whereConditions(Map.of("id", 1))
+                .userName("testUser")
+                .build();
+
+        DBWriteRequest request = DBWriteRequest.builder()
+                .eventType("CREATE")
+                .tableName("main_table")
+                .columnValues(columnValues)
+                .userName("testUser")
+                .relatedWrites(List.of(relatedWrite))
+                .build();
+
+        SqlConnection mockConnection = mock(SqlConnection.class);
+
+        when(mockPool.withTransaction(any(Function.class))).thenAnswer(invocation -> {
+            Function<SqlConnection, Uni<Void>> fn = invocation.getArgument(0);
+            return fn.apply(mockConnection);
+        });
+        when(mockRepository.executeInsert(any(SqlClient.class), anyString(), any(Map.class)))
+                .thenReturn(Uni.createFrom().item(1));
+        when(mockRepository.executeDelete(any(SqlClient.class), anyString(), any(Map.class)))
+                .thenReturn(Uni.createFrom().item(1));
+
+        // Execute
+        service.processEvent(request).subscribe().asCompletionStage().toCompletableFuture().join();
+
+        // Verify transaction was used and connection was passed through
+        verify(mockPool).withTransaction(any(Function.class));
+        verify(mockRepository).executeInsert(eq(mockConnection), eq("main_table"), eq(columnValues));
+        verify(mockRepository).executeDelete(eq(mockConnection), eq("related_table"), any(Map.class));
+    }
+
+    @Test
+    @DisplayName("processEvent should NOT use transaction when no related writes")
+    void testProcessEventNoTransactionWithoutRelatedWrites() {
+        // Setup
+        Map<String, Object> columnValues = Map.of("name", "John");
+
+        DBWriteRequest request = DBWriteRequest.builder()
+                .eventType("CREATE")
+                .tableName("main_table")
+                .columnValues(columnValues)
+                .userName("testUser")
+                .build();
+
+        when(mockRepository.executeInsert(anyString(), any(Map.class)))
+                .thenReturn(Uni.createFrom().item(1));
+
+        // Execute
+        service.processEvent(request).subscribe().asCompletionStage().toCompletableFuture().join();
+
+        // Verify no transaction was used
+        verify(mockPool, never()).withTransaction(any(Function.class));
+        verify(mockRepository).executeInsert("main_table", columnValues);
+    }
+
+    @Test
+    @DisplayName("processEvent should rollback insert when related write fails")
+    @SuppressWarnings("unchecked")
+    void testProcessEventRollbackOnRelatedWriteFailure() {
+        // Setup
+        Map<String, Object> columnValues = Map.of("name", "John");
+
+        DBWriteRequest relatedWrite = DBWriteRequest.builder()
+                .eventType("DELETE")
+                .tableName("related_table")
+                .whereConditions(Map.of("id", 1))
+                .userName("testUser")
+                .build();
+
+        DBWriteRequest request = DBWriteRequest.builder()
+                .eventType("CREATE")
+                .tableName("main_table")
+                .columnValues(columnValues)
+                .userName("testUser")
+                .relatedWrites(List.of(relatedWrite))
+                .build();
+
+        SqlConnection mockConnection = mock(SqlConnection.class);
+
+        when(mockPool.withTransaction(any(Function.class))).thenAnswer(invocation -> {
+            Function<SqlConnection, Uni<Void>> fn = invocation.getArgument(0);
+            return fn.apply(mockConnection);
+        });
+        when(mockRepository.executeInsert(any(SqlClient.class), anyString(), any(Map.class)))
+                .thenReturn(Uni.createFrom().item(1));
+        when(mockRepository.executeDelete(any(SqlClient.class), anyString(), any(Map.class)))
+                .thenReturn(Uni.createFrom().failure(new RuntimeException("Related write failed")));
+
+        // Execute & verify failure propagates (transaction rolls back)
+        assertThrows(Exception.class, () ->
+                service.processEvent(request).subscribe().asCompletionStage().toCompletableFuture().join()
+        );
+
+        // Verify both operations were attempted within the transaction
+        verify(mockPool).withTransaction(any(Function.class));
+        verify(mockRepository).executeInsert(eq(mockConnection), eq("main_table"), eq(columnValues));
+        verify(mockRepository).executeDelete(eq(mockConnection), eq("related_table"), any(Map.class));
+    }
+
+    @Test
+    @DisplayName("processEvent should skip for null request")
+    void testProcessEventNullRequest() {
+        var result = service.processEvent(null);
+        assertNotNull(result);
+        result.subscribe().asCompletionStage().toCompletableFuture().join();
+        verifyNoInteractions(mockRepository);
+    }
+
+    @Test
+    @DisplayName("processEvent should skip for blank eventType")
+    void testProcessEventBlankEventType() {
+        DBWriteRequest request = DBWriteRequest.builder()
+                .eventType("")
+                .tableName("table")
+                .userName("user")
+                .build();
+
+        var result = service.processEvent(request);
+        assertNotNull(result);
+        result.subscribe().asCompletionStage().toCompletableFuture().join();
+        verifyNoInteractions(mockRepository);
     }
 }

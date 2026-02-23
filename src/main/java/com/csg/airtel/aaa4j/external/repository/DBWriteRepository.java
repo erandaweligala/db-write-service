@@ -4,6 +4,7 @@ import com.csg.airtel.aaa4j.infrastructure.DatabaseCircuitBreaker;
 import com.csg.airtel.aaa4j.infrastructure.PerformanceMetrics;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
+import io.vertx.mutiny.sqlclient.SqlClient;
 import io.vertx.mutiny.sqlclient.SqlResult;
 import io.vertx.mutiny.sqlclient.Tuple;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -45,6 +46,13 @@ public class DBWriteRepository {
     public Uni<Integer> update(String tableName,
                                Map<String, Object> columnValues,
                                Map<String, Object> whereConditions) {
+        return update(client, tableName, columnValues, whereConditions);
+    }
+
+    public Uni<Integer> update(SqlClient sqlClient,
+                               String tableName,
+                               Map<String, Object> columnValues,
+                               Map<String, Object> whereConditions) {
 
         if (!circuitBreaker.allowRequest()) {
             log.warn("Circuit breaker is OPEN, rejecting database update request");
@@ -65,7 +73,7 @@ public class DBWriteRepository {
 
         Instant startTime = Instant.now();
 
-        return executeUpdate(tableName, columnValues, whereConditions)
+        return executeUpdate(sqlClient, tableName, columnValues, whereConditions)
                 .onItem().invoke(rowCount -> {
                     Duration duration = Duration.between(startTime, Instant.now());
                     metrics.recordDbUpdate();
@@ -82,7 +90,8 @@ public class DBWriteRepository {
                 });
     }
 
-    private Uni<Integer> executeUpdate(String tableName,
+    private Uni<Integer> executeUpdate(SqlClient sqlClient,
+                                       String tableName,
                                        Map<String, Object> columnValues,
                                        Map<String, Object> whereConditions) {
 
@@ -118,7 +127,7 @@ public class DBWriteRepository {
             log.debugf("SQL: %s", sqlStr);
         }
 
-        return client.preparedQuery(sqlStr)
+        return sqlClient.preparedQuery(sqlStr)
                 .execute(Tuple.from(values))
                 .map(SqlResult::rowCount)
                 .onFailure().invoke(t -> log.errorf(t, "Update query failed on table: %s", tableName));
@@ -129,6 +138,12 @@ public class DBWriteRepository {
     // -----------------------------------------------------------------------
 
     public Uni<Integer> executeInsert(String tableName,
+                                      Map<String, Object> columnValues) {
+        return executeInsert(client, tableName, columnValues);
+    }
+
+    public Uni<Integer> executeInsert(SqlClient sqlClient,
+                                      String tableName,
                                       Map<String, Object> columnValues) {
 
         if (!circuitBreaker.allowRequest()) {
@@ -172,7 +187,7 @@ public class DBWriteRepository {
             log.debugf("SQL: %s", sqlStr);
         }
 
-        return client.preparedQuery(sqlStr)
+        return sqlClient.preparedQuery(sqlStr)
                 .execute(Tuple.from(values))
                 .map(SqlResult::rowCount)
                 // ---------------------------------------------------------------
@@ -210,6 +225,12 @@ public class DBWriteRepository {
 
     public Uni<Integer> executeDelete(String tableName,
                                       Map<String, Object> whereConditions) {
+        return executeDelete(client, tableName, whereConditions);
+    }
+
+    public Uni<Integer> executeDelete(SqlClient sqlClient,
+                                      String tableName,
+                                      Map<String, Object> whereConditions) {
 
         if (!circuitBreaker.allowRequest()) {
             log.warn("Circuit breaker is OPEN, rejecting database delete request");
@@ -245,7 +266,7 @@ public class DBWriteRepository {
             log.debugf("SQL: %s", sqlStr);
         }
 
-        return client.preparedQuery(sqlStr)
+        return sqlClient.preparedQuery(sqlStr)
                 .execute(Tuple.from(values))
                 .map(SqlResult::rowCount)
                 .onItem().invoke(rowCount -> {
