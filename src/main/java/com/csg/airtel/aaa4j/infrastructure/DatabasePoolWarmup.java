@@ -19,7 +19,7 @@ import java.util.List;
 public class DatabasePoolWarmup {
     private static final Logger log = Logger.getLogger(DatabasePoolWarmup.class);
 
-    private static final int WARMUP_CONNECTIONS = 50;  // Warm up 50 connections
+    private static final int WARMUP_CONNECTIONS = 100;  // Warm up to match pool max-size
     private static final String WARMUP_QUERY = "SELECT 1 FROM DUAL";  // Oracle warmup query
 
 

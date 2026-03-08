@@ -54,15 +54,15 @@ quarkus:
     timeout: 60000
 
 pool:
-  max-size: 50                      # Max connections
+  max-size: 100                     # Increased for 1500 TPS (was 50)
   connection-timeout: 5000          # 5 seconds to acquire connection
   idle-timeout: 600000              # 10 minutes idle before closing
   max-lifetime: 1800000             # 30 minutes max connection lifetime
-  acquire-increment: 4              # Connections to acquire at once
-  prepared-statement-cache-max-size: 256  # Cache prepared statements
+  acquire-increment: 5              # Connections to acquire at once
+  prepared-statement-cache-max-size: 512  # Increased cache (was 256)
   pipelining-enabled: true          # Enable query pipelining
-  pipelining-limit: 256             # Max pipelined queries
-  event-loop-size: 32               # Match vertx event-loops-pool-size
+  pipelining-limit: 512             # Increased pipeline depth (was 256)
+  event-loop-size: 48               # Increased for 1500 TPS (was 32)
   tcp-keep-alive: true              # Detect dead connections
   tcp-no-delay: true                # Reduce latency
   pool-cleaner-enabled: true        # Clean idle connections
@@ -93,11 +93,14 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 100
-        max.poll.interval.ms: 10000
+        max.poll.records: 500
+        max.poll.interval.ms: 30000
         session.timeout.ms: 10000
         heartbeat.interval.ms: 3000
         failure-strategy: ignore
+        concurrency: 8
+        fetch.min.bytes: 1024
+        fetch.max.wait.ms: 100
 
       # DR→DC accounting channel (reverse direction)
       db-write-events-reverse:
@@ -108,11 +111,14 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 100
-        max.poll.interval.ms: 10000
+        max.poll.records: 500
+        max.poll.interval.ms: 30000
         session.timeout.ms: 10000
         heartbeat.interval.ms: 3000
         failure-strategy: ignore
+        concurrency: 8
+        fetch.min.bytes: 1024
+        fetch.max.wait.ms: 100
 
       # DC→DR provisioning channel (request-reply)
       db-write-events-dr:

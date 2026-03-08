@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class DBWriteConsumer {
 
     private static final Logger log = Logger.getLogger(DBWriteConsumer.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final DBWriteService dbWriteService;
     private final AtomicInteger processedCounter = new AtomicInteger(0);
@@ -131,18 +132,21 @@ public class DBWriteConsumer {
     // =========================================================================
 
     private Uni<Void> handleProvisioningMessage(Message<String> message, String channelName) throws Exception {
-        log.infof("[%s] %s payload = %s", site, channelName, message.getPayload());
+        if (log.isDebugEnabled()) {
+            log.debugf("[%s] %s payload = %s", site, channelName, message.getPayload());
+        }
 
-        ObjectMapper mapper = new ObjectMapper();
-        DBWriteRequest request = mapper.readValue(message.getPayload(), DBWriteRequest.class);
+        DBWriteRequest request = MAPPER.readValue(message.getPayload(), DBWriteRequest.class);
 
         IncomingKafkaRecordMetadata<?, ?> metadata =
                 message.getMetadata(IncomingKafkaRecordMetadata.class).get();
 
-        metadata.getHeaders().forEach(h ->
-                log.infof("[%s] %s Header: %s = %s", site, channelName,
-                        h.key(), new String(h.value(), StandardCharsets.UTF_8))
-        );
+        if (log.isDebugEnabled()) {
+            metadata.getHeaders().forEach(h ->
+                    log.debugf("[%s] %s Header: %s = %s", site, channelName,
+                            h.key(), new String(h.value(), StandardCharsets.UTF_8))
+            );
+        }
 
         var correlationHeader = metadata.getHeaders().lastHeader("kafka_correlationId");
         var replyTopicHeader  = metadata.getHeaders().lastHeader("kafka_replyTopic");
@@ -161,7 +165,9 @@ public class DBWriteConsumer {
 
         byte[] correlationId = correlationHeader.value();
         String replyTopic    = new String(replyTopicHeader.value(), StandardCharsets.UTF_8);
-        log.infof("[%s] %s Reply topic: %s", site, channelName, replyTopic);
+        if (log.isDebugEnabled()) {
+            log.debugf("[%s] %s Reply topic: %s", site, channelName, replyTopic);
+        }
 
         return dbWriteService.processEvent(request)
                 .onItem().invoke(() -> {

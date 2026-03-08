@@ -48,8 +48,10 @@ public class DBWriteService {
             return Uni.createFrom().voidItem();
         }
 
-        log.infof("Processing eventType=%s for user=%s on table=%s",
-                eventType, request.getUserName(), request.getTableName());
+        if (log.isDebugEnabled()) {
+            log.debugf("Processing eventType=%s for user=%s on table=%s",
+                    eventType, request.getUserName(), request.getTableName());
+        }
 
         boolean hasRelatedWrites = request.getRelatedWrites() != null && !request.getRelatedWrites().isEmpty();
 
@@ -129,15 +131,19 @@ public class DBWriteService {
             return Uni.createFrom().voidItem();
         }
 
-        log.infof("Processing %d related writes for user=%s",
-                request.getRelatedWrites().size(), request.getUserName());
+        if (log.isDebugEnabled()) {
+            log.debugf("Processing %d related writes for user=%s",
+                    request.getRelatedWrites().size(), request.getUserName());
+        }
 
         // Chain each related write sequentially — order matters (e.g. DELETE mac then INSERT mac)
         Uni<Void> chain = Uni.createFrom().voidItem();
         for (DBWriteRequest related : request.getRelatedWrites()) {
             chain = chain.chain(() -> {
-                log.infof("Processing related write: eventType=%s, table=%s, user=%s",
-                        related.getEventType(), related.getTableName(), related.getUserName());
+                if (log.isDebugEnabled()) {
+                    log.debugf("Processing related write: eventType=%s, table=%s, user=%s",
+                            related.getEventType(), related.getTableName(), related.getUserName());
+                }
                 return processSingleWrite(related);
             });
         }
@@ -149,15 +155,19 @@ public class DBWriteService {
             return Uni.createFrom().voidItem();
         }
 
-        log.infof("Processing %d related writes for user=%s",
-                request.getRelatedWrites().size(), request.getUserName());
+        if (log.isDebugEnabled()) {
+            log.debugf("Processing %d related writes for user=%s",
+                    request.getRelatedWrites().size(), request.getUserName());
+        }
 
         // Chain each related write sequentially within the same transaction connection
         Uni<Void> chain = Uni.createFrom().voidItem();
         for (DBWriteRequest related : request.getRelatedWrites()) {
             chain = chain.chain(() -> {
-                log.infof("Processing related write: eventType=%s, table=%s, user=%s",
-                        related.getEventType(), related.getTableName(), related.getUserName());
+                if (log.isDebugEnabled()) {
+                    log.debugf("Processing related write: eventType=%s, table=%s, user=%s",
+                            related.getEventType(), related.getTableName(), related.getUserName());
+                }
                 return processSingleWrite(conn, related);
             });
         }
