@@ -11,6 +11,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.SneakyThrows;
 import org.apache.kafka.common.header.internals.RecordHeaders;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.reactive.messaging.*;
 import org.jboss.logging.Logger;
 
@@ -25,6 +26,9 @@ public class DBWriteConsumer {
     private final DBWriteService dbWriteService;
     private final AtomicInteger processedCounter = new AtomicInteger(0);
 
+    @ConfigProperty(name = "app.site", defaultValue = "DC")
+    String site;
+
     @Inject
     @Channel("responses-out")
     MutinyEmitter<String> replyEmitter;
@@ -34,10 +38,12 @@ public class DBWriteConsumer {
         this.dbWriteService = dbWriteService;
     }
 
-    /**
-     * Consumer for the DC→DR accounting channel.
-     * Acknowledges first (at-most-once on failure) then processes.
-     */
+    // =========================================================================
+    // DC→DR accounting channel
+    // Topic: DC-DR
+    // Events published by DC-side services. Both DC and DR consume this topic.
+    // =========================================================================
+
     @Incoming("db-write-events")
     @Acknowledgment(Acknowledgment.Strategy.MANUAL)
     public Uni<Void> consumeAccountingEvent(Message<DBWriteRequest> message) {
@@ -45,10 +51,8 @@ public class DBWriteConsumer {
 
         if (log.isDebugEnabled()) {
             message.getMetadata(IncomingKafkaRecordMetadata.class)
-                    .ifPresent(metadata -> log.debugf("Received from partition: %d, offset: %d, key: %s",
-                            metadata.getPartition(),
-                            metadata.getOffset(),
-                            metadata.getKey()));
+                    .ifPresent(metadata -> log.debugf("[%s] DC-DR received from partition: %d, offset: %d, key: %s",
+                            site, metadata.getPartition(), metadata.getOffset(), metadata.getKey()));
         }
 
         return Uni.createFrom().completionStage(message.ack())
@@ -56,35 +60,78 @@ public class DBWriteConsumer {
                 .onItem().invoke(() -> {
                     int count = processedCounter.incrementAndGet();
                     if (count % 100 == 0) {
-                        log.infof("Processed %d messages", count);
+                        log.infof("[%s] Processed %d DC-DR messages", site, count);
                     }
                 })
                 .onFailure().invoke(throwable -> log.errorf(throwable,
-                        "Error processing event for user: %s | eventType: %s (already acked)",
-                        request.getUserName(), request.getEventType()))
+                        "[%s] Error processing DC-DR event for user: %s | eventType: %s (already acked)",
+                        site, request.getUserName(), request.getEventType()))
                 .onItem().transformToUni(result -> Uni.createFrom().voidItem())
                 .onFailure().recoverWithItem((Void) null);
     }
 
-    /**
-     * Consumer for the DR provisioning channel (request-reply with Spring).
-     *
-     * Fix summary:
-     *  - On SUCCESS  → ack() then send "SUCCESS" reply.
-     *  - On FAILURE  → ack() (not nack) then send "FAIL:..." reply.
-     *
-     * Previously nack() was called on failure, which with failure-strategy=fail
-     * halted the entire consumer. Because inserts are now idempotent in
-     * DBWriteRepository (duplicate unique-constraint violations are silently
-     * skipped), a genuine fatal error is extremely rare. We ack unconditionally
-     * so the consumer keeps running, and communicate the outcome via the reply.
-     */
+    // =========================================================================
+    // DR→DC accounting channel (reverse direction)
+    // Topic: DR-DC
+    // Events published by DR-side services. Both DC and DR consume this topic.
+    // =========================================================================
+
+    @Incoming("db-write-events-reverse")
+    @Acknowledgment(Acknowledgment.Strategy.MANUAL)
+    public Uni<Void> consumeReverseAccountingEvent(Message<DBWriteRequest> message) {
+        DBWriteRequest request = message.getPayload();
+
+        if (log.isDebugEnabled()) {
+            message.getMetadata(IncomingKafkaRecordMetadata.class)
+                    .ifPresent(metadata -> log.debugf("[%s] DR-DC received from partition: %d, offset: %d, key: %s",
+                            site, metadata.getPartition(), metadata.getOffset(), metadata.getKey()));
+        }
+
+        return Uni.createFrom().completionStage(message.ack())
+                .onItem().transformToUni(v -> dbWriteService.processDbWriteRequest(request))
+                .onItem().invoke(() -> {
+                    int count = processedCounter.incrementAndGet();
+                    if (count % 100 == 0) {
+                        log.infof("[%s] Processed %d DR-DC messages", site, count);
+                    }
+                })
+                .onFailure().invoke(throwable -> log.errorf(throwable,
+                        "[%s] Error processing DR-DC event for user: %s | eventType: %s (already acked)",
+                        site, request.getUserName(), request.getEventType()))
+                .onItem().transformToUni(result -> Uni.createFrom().voidItem())
+                .onFailure().recoverWithItem((Void) null);
+    }
+
+    // =========================================================================
+    // DC→DR provisioning channel (request-reply)
+    // Topic: dc-provisioning
+    // =========================================================================
+
     @Incoming("db-write-events-dr")
     @Acknowledgment(Acknowledgment.Strategy.MANUAL)
     @SneakyThrows
-    public Uni<Void> consumeAndReply(Message<String> message) {
+    public Uni<Void> consumeAndReplyDR(Message<String> message) {
+        return handleProvisioningMessage(message, "dc-provisioning");
+    }
 
-        log.infof("payload = %s", message.getPayload());
+    // =========================================================================
+    // DR→DC provisioning channel (reverse request-reply)
+    // Topic: dr-provisioning
+    // =========================================================================
+
+    @Incoming("db-write-events-dc")
+    @Acknowledgment(Acknowledgment.Strategy.MANUAL)
+    @SneakyThrows
+    public Uni<Void> consumeAndReplyDC(Message<String> message) {
+        return handleProvisioningMessage(message, "dr-provisioning");
+    }
+
+    // =========================================================================
+    // Shared provisioning handler
+    // =========================================================================
+
+    private Uni<Void> handleProvisioningMessage(Message<String> message, String channelName) throws Exception {
+        log.infof("[%s] %s payload = %s", site, channelName, message.getPayload());
 
         ObjectMapper mapper = new ObjectMapper();
         DBWriteRequest request = mapper.readValue(message.getPayload(), DBWriteRequest.class);
@@ -93,46 +140,42 @@ public class DBWriteConsumer {
                 message.getMetadata(IncomingKafkaRecordMetadata.class).get();
 
         metadata.getHeaders().forEach(h ->
-                log.infof("Header: %s = %s", h.key(), new String(h.value(), StandardCharsets.UTF_8))
+                log.infof("[%s] %s Header: %s = %s", site, channelName,
+                        h.key(), new String(h.value(), StandardCharsets.UTF_8))
         );
 
         var correlationHeader = metadata.getHeaders().lastHeader("kafka_correlationId");
         var replyTopicHeader  = metadata.getHeaders().lastHeader("kafka_replyTopic");
 
         if (correlationHeader == null || replyTopicHeader == null) {
-            log.warnf("Missing reply headers — processing without reply for user: %s", request.getUserName());
+            log.warnf("[%s] %s Missing reply headers — processing without reply for user: %s",
+                    site, channelName, request.getUserName());
             return dbWriteService.processEvent(request)
                     .onItem().transformToUni(v -> Uni.createFrom().completionStage(message.ack()))
                     .onFailure().recoverWithUni(t -> {
-                        log.errorf(t, "Error processing event (no reply headers) for user: %s | eventType: %s",
-                                request.getUserName(), request.getEventType());
-                        // Ack even on failure — consumer must keep running.
-                        // The duplicate-safe insert means this is a truly unexpected
-                        // error; log it and move on.
+                        log.errorf(t, "[%s] %s Error processing event (no reply headers) for user: %s | eventType: %s",
+                                site, channelName, request.getUserName(), request.getEventType());
                         return Uni.createFrom().completionStage(message.ack());
                     });
         }
 
         byte[] correlationId = correlationHeader.value();
         String replyTopic    = new String(replyTopicHeader.value(), StandardCharsets.UTF_8);
-        log.infof("Reply topic: %s", replyTopic);
+        log.infof("[%s] %s Reply topic: %s", site, channelName, replyTopic);
 
         return dbWriteService.processEvent(request)
                 .onItem().invoke(() -> {
                     int count = processedCounter.incrementAndGet();
-                    if (count % 100 == 0) log.infof("Processed %d DR messages", count);
+                    if (count % 100 == 0) log.infof("[%s] Processed %d %s messages", site, count, channelName);
                 })
                 .onItem().transformToUni(v ->
-                        // SUCCESS path: ack then reply
                         Uni.createFrom().completionStage(message.ack())
                                 .onItem().transformToUni(ignored ->
                                         sendReply(replyTopic, correlationId, "SUCCESS"))
                 )
                 .onFailure().recoverWithUni(throwable -> {
-                    log.errorf(throwable, "Error processing DR event for user: %s | eventType: %s",
-                            request.getUserName(), request.getEventType());
-                    // FAILURE path: ack (not nack) so the consumer keeps running,
-                    // then send a FAIL reply so the caller is still notified.
+                    log.errorf(throwable, "[%s] %s Error processing event for user: %s | eventType: %s",
+                            site, channelName, request.getUserName(), request.getEventType());
                     return Uni.createFrom().completionStage(message.ack())
                             .onItem().transformToUni(ignored ->
                                     sendReply(replyTopic, correlationId, "FAIL: " + throwable.getMessage())
@@ -150,4 +193,3 @@ public class DBWriteConsumer {
         return replyEmitter.sendMessage(replyMessage);
     }
 }
-// commit test
