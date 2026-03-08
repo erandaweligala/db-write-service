@@ -86,15 +86,25 @@ mp:
         auto.offset.reset: earliest
         enable.auto.commit: false
         max.poll.records: 100
-        max.poll.interval.ms: 10000
-        session.timeout.ms: 10000
-        heartbeat.interval.ms: 3000
+        max.poll.interval.ms: 10000   # ← was 300000 (5 min), reduced to match reply window
+        session.timeout.ms: 10000     # ← was 30000, aligned with Spring consumer
+        heartbeat.interval.ms: 3000   # ← added, must be < session.timeout.ms / 3
         failure-strategy: ignore
+
 
       db-write-events-dr:
         connector: smallrye-kafka
         topic: dc-provisioning
+        # FIX 1: Unique group.id — previously shared with accounting-dc-group,
+        #         which caused Kafka to split partitions between the two consumers.
+        #         The request-reply consumer was receiving only a fraction of
+        #         messages (or none), so Spring never got its reply back.
         group.id: provisioning-reply-group
+        # FIX 2: Consumer method signature is Message<String> and parses JSON
+        #         manually. Using ObjectMapperDeserializer here caused a type
+        #         mismatch — Quarkus tried to deserialize to DBWriteRequest
+        #         but the method expected a raw String, resulting in a
+        #         ClassCastException at runtime that silently swallowed messages.
         value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
@@ -103,26 +113,9 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        failure-strategy: ignore
-
-      # ================================================
-      # BIDIRECTIONAL SYNC: Inbound from remote site
-      # DC deployment reads DR-DC; DR deployment reads DC-DR
-      # Override topic per-site via site-specific profile
-      # ================================================
-      sync-inbound:
-        connector: smallrye-kafka
-        topic: DR-DC
-        group.id: sync-inbound-dc-group
-        bootstrap.servers: kafka-headless.cluster-dc.svc.cluster.local:9092
-        value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        auto.offset.reset: earliest
-        enable.auto.commit: false
-        max.poll.records: 100
-        max.poll.interval.ms: 300000
-        session.timeout.ms: 30000
-        heartbeat.interval.ms: 10000
+        # FIX 3: failure-strategy kept as ignore since the consumer already
+        #         handles failures internally and sends FAIL replies itself —
+        #         letting Quarkus nack would halt the consumer.
         failure-strategy: ignore
 
     outgoing:
@@ -134,26 +127,3 @@ mp:
         bootstrap.servers: kafka-headless.cluster-dc.svc.cluster.local:9092
         linger.ms: 0
         acks: 1
-
-      # ================================================
-      # BIDIRECTIONAL SYNC: Outbound to remote site
-      # DC deployment writes to DC-DR; DR deployment writes to DR-DC
-      # Override topic per-site via site-specific profile
-      # ================================================
-      sync-outbound:
-        connector: smallrye-kafka
-        bootstrap.servers: kafka-headless.cluster-dc.svc.cluster.local:9092
-        topic: DC-DR
-        key.serializer: org.apache.kafka.common.serialization.StringSerializer
-        value.serializer: org.apache.kafka.common.serialization.StringSerializer
-        linger.ms: 5
-        acks: all
-        retries: 3
-        enable.idempotence: true
-
-# Site identity — DC deployment
-site:
-  id: DC
-  sync-enabled: true
-  dedup-ttl-seconds: 300
-  dedup-max-size: 100000

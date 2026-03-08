@@ -126,26 +126,12 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        failure-strategy: ignore
-
-      # ================================================
-      # BIDIRECTIONAL SYNC: Inbound from remote site
-      # DC reads from DR-DC topic; DR reads from DC-DR topic
-      # Topic name is overridden per-site in profile configs
-      # ================================================
-      sync-inbound:
-        connector: smallrye-kafka
-        topic: DR-DC
-        group.id: sync-inbound-group
-        bootstrap.servers: localhost:9092
-        value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        auto.offset.reset: earliest
-        enable.auto.commit: false
-        max.poll.records: 100
-        max.poll.interval.ms: 300000
-        session.timeout.ms: 30000
-        heartbeat.interval.ms: 10000
+        # FIX 3: failure-strategy was missing heartbeat.interval.ms, meaning
+        #         under slow DB writes the broker could mark the consumer dead
+        #         mid-processing before the ack+reply could be sent.
+        #         Also kept failure-strategy: ignore since the consumer already
+        #         handles failures internally and sends FAIL replies itself —
+        #         letting Quarkus nack would halt the consumer (same bug as before).
         failure-strategy: ignore
 
     # ------------------------
@@ -160,28 +146,3 @@ mp:
         value.serializer: org.apache.kafka.common.serialization.StringSerializer
         linger.ms: 0
         acks: 1
-
-      # ================================================
-      # BIDIRECTIONAL SYNC: Outbound to remote site
-      # DC writes to DC-DR topic; DR writes to DR-DC topic
-      # Topic name is overridden per-site in profile configs
-      # ================================================
-      sync-outbound:
-        connector: smallrye-kafka
-        bootstrap.servers: localhost:9092
-        topic: DC-DR
-        key.serializer: org.apache.kafka.common.serialization.StringSerializer
-        value.serializer: org.apache.kafka.common.serialization.StringSerializer
-        linger.ms: 5
-        acks: all
-        retries: 3
-        enable.idempotence: true
-
-# ============================================================
-# SITE IDENTITY (override per deployment)
-# ============================================================
-site:
-  id: DC
-  sync-enabled: true
-  dedup-ttl-seconds: 300
-  dedup-max-size: 100000
