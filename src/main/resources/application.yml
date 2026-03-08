@@ -1,6 +1,3 @@
-# ============================================================
-# LOCAL CONFIGURATION
-# ============================================================
 
 quarkus:
   http:
@@ -80,9 +77,6 @@ pool:
   pool-cleaner-enabled: true
   pool-cleaner-interval: 60000
 
-# ============================================================
-# KAFKA (LOCAL)
-# ============================================================
 
 kafka:
   bootstrap:
@@ -91,13 +85,10 @@ kafka:
 mp:
   messaging:
 
-    # ------------------------
-    # DC → DR Channel (UNTOUCHED)
-    # ------------------------
     incoming:
       db-write-events:
         connector: smallrye-kafka
-        topic: dctodr-dc
+        topic: DC-DR
         group.id: accounting-dc-group
         bootstrap.servers: localhost:9092
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
@@ -126,23 +117,4 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        # FIX 3: failure-strategy was missing heartbeat.interval.ms, meaning
-        #         under slow DB writes the broker could mark the consumer dead
-        #         mid-processing before the ack+reply could be sent.
-        #         Also kept failure-strategy: ignore since the consumer already
-        #         handles failures internally and sends FAIL replies itself —
-        #         letting Quarkus nack would halt the consumer (same bug as before).
         failure-strategy: ignore
-
-    # ------------------------
-    # Reply Channel (to Spring) — UNTOUCHED
-    # ------------------------
-    outgoing:
-      responses-out:
-        connector: smallrye-kafka
-        bootstrap.servers: localhost:9092
-        topic: db-write-events-reply-plan,db-write-events-reply-provisioning
-        key.serializer: org.apache.kafka.common.serialization.StringSerializer
-        value.serializer: org.apache.kafka.common.serialization.StringSerializer
-        linger.ms: 0
-        acks: 1

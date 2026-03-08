@@ -95,16 +95,7 @@ mp:
       db-write-events-dr:
         connector: smallrye-kafka
         topic: dc-provisioning
-        # FIX 1: Unique group.id — previously shared with accounting-dc-group,
-        #         which caused Kafka to split partitions between the two consumers.
-        #         The request-reply consumer was receiving only a fraction of
-        #         messages (or none), so Spring never got its reply back.
         group.id: provisioning-reply-group
-        # FIX 2: Consumer method signature is Message<String> and parses JSON
-        #         manually. Using ObjectMapperDeserializer here caused a type
-        #         mismatch — Quarkus tried to deserialize to DBWriteRequest
-        #         but the method expected a raw String, resulting in a
-        #         ClassCastException at runtime that silently swallowed messages.
         value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
@@ -113,17 +104,4 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        # FIX 3: failure-strategy kept as ignore since the consumer already
-        #         handles failures internally and sends FAIL replies itself —
-        #         letting Quarkus nack would halt the consumer.
         failure-strategy: ignore
-
-    outgoing:
-      responses-out:
-        connector: smallrye-kafka
-        topic: db-write-events-reply-plan,db-write-events-reply-provisioning
-        key.serializer: org.apache.kafka.common.serialization.StringSerializer
-        value.serializer: org.apache.kafka.common.serialization.StringSerializer
-        bootstrap.servers: kafka-headless.cluster-dc.svc.cluster.local:9092
-        linger.ms: 0
-        acks: 1
