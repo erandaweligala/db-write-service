@@ -198,7 +198,7 @@ public class BucketInstanceDataGenerator {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiration = now.plusDays(30);
 
-        int isUnlimited = random.nextInt(10) < 2 ? 1 : 0; // 20% unlimited
+        int isUnlimited = random.nextInt(10) < 4 ? 1 : 0;
 
         // If unlimited = 1, set initialBalance and currentBalance to null
         Long initialBalance = null;
@@ -209,13 +209,20 @@ public class BucketInstanceDataGenerator {
         long usage = 0L;
 
         if (isUnlimited == 0) {
-            // Limited bucket: generate balance values
-            initialBalance = 10_000_000_000L + random.nextLong(90_000_000_000L); // > 9999999999
-            currentBalance = initialBalance - random.nextLong(initialBalance / 10);
-            consumptionLimit = initialBalance / 10;
+
+            initialBalance = 1_000_000_000L;
+            consumptionLimit = 100_000_000L;
             maxCarryForward = initialBalance / 5;
-            totalCarryForward = random.nextLong(initialBalance / 20);
-            usage = random.nextLong(initialBalance / 5);
+            totalCarryForward = initialBalance / 20;
+
+            boolean isZeroBalance = random.nextInt(100) < 5;
+
+            if (isZeroBalance) {
+                currentBalance = 0L;
+                usage = initialBalance; // Optional: simulate fully consumed
+            } else {
+                currentBalance = initialBalance;
+            }
         }
 
         return new BucketInstanceRecord(

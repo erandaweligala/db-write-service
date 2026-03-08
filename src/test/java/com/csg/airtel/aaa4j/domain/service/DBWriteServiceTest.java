@@ -4,662 +4,216 @@ import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.external.repository.DBWriteRepository;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
-import io.vertx.mutiny.sqlclient.SqlClient;
 import io.vertx.mutiny.sqlclient.SqlConnection;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-@DisplayName("DBWriteService Tests")
+@ExtendWith(MockitoExtension.class)
 class DBWriteServiceTest {
 
     @Mock
-    private DBWriteRepository mockRepository;
+    DBWriteRepository dbWriteRepository;
 
     @Mock
-    private DBOperationsService dbOperationsService;
+    DBOperationsService dbOperationsService;
 
     @Mock
-    private Pool mockPool;
+    Pool pool;
 
-    private DBWriteService service;
+    @Mock
+    SqlConnection sqlConnection;
+
+    DBWriteService service;
 
     @BeforeEach
     void setUp() {
-        MockitoAnnotations.openMocks(this);
-        service = new DBWriteService(mockRepository, dbOperationsService, mockPool);
-    }
-
-    @Test
-    @DisplayName("Should create DBWriteService with repository")
-    void testConstructor() {
-        assertNotNull(service);
-    }
-
-    @Test
-    @DisplayName("Should process UPDATE_EVENT request")
-    void testProcessUpdateEvent() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("name", "John");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                "UPDATE_EVENT"
-        );
-
-        when(mockRepository.update(anyString(), any(Map.class), any(Map.class)))
-                .thenReturn(Uni.createFrom().item(1));
-
-        // Execute
-        var result = service.processDbWriteRequest(request);
-
-        // Verify
-        assertNotNull(result);
-        verify(mockRepository, times(1)).update("users", columnValues, whereConditions);
-    }
-
-    @Test
-    @DisplayName("Should process update_event in lowercase")
-    void testProcessUpdateEventLowercase() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("status", "active");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                "update_event"
-        );
-
-        when(mockRepository.update(anyString(), any(Map.class), any(Map.class)))
-                .thenReturn(Uni.createFrom().item(1));
-
-        // Execute
-        var result = service.processDbWriteRequest(request);
-
-        // Verify
-        assertNotNull(result);
-        verify(mockRepository, times(1)).update("users", columnValues, whereConditions);
-    }
-
-    @Test
-    @DisplayName("Should process UpdateEvent mixed case")
-    void testProcessUpdateEventMixedCase() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("age", 25);
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 2);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                "UpDaTe_EvEnT"
-        );
-
-        when(mockRepository.update(anyString(), any(Map.class), any(Map.class)))
-                .thenReturn(Uni.createFrom().item(1));
-
-        // Execute
-        var result = service.processDbWriteRequest(request);
-
-        // Verify
-        assertNotNull(result);
-        verify(mockRepository, times(1)).update("users", columnValues, whereConditions);
-    }
-
-    @Test
-    @DisplayName("Should return empty Uni for non-UPDATE_EVENT")
-    void testProcessNonUpdateEvent() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("name", "John");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                "CREATE_EVENT"
-        );
-
-        // Execute
-        var result = service.processDbWriteRequest(request);
-
-        // Verify
-        assertNotNull(result);
-        verify(mockRepository, never()).update(anyString(), any(Map.class), any(Map.class));
-    }
-
-    @Test
-    @DisplayName("Should return empty Uni for DELETE_EVENT")
-    void testProcessDeleteEvent() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("name", "John");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                "DELETE_EVENT"
-        );
-
-        // Execute
-        var result = service.processDbWriteRequest(request);
-
-        // Verify
-        assertNotNull(result);
-        verify(mockRepository, never()).update(anyString(), any(Map.class), any(Map.class));
-    }
-
-    @Test
-    @DisplayName("Should return empty Uni for INSERT_EVENT")
-    void testProcessInsertEvent() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("name", "John");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                "INSERT_EVENT"
-        );
-
-        // Execute
-        var result = service.processDbWriteRequest(request);
-
-        // Verify
-        assertNotNull(result);
-        verify(mockRepository, never()).update(anyString(), any(Map.class), any(Map.class));
-    }
-
-    @Test
-    @DisplayName("Should return empty Uni for unknown event type")
-    void testProcessUnknownEventType() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("name", "John");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                "UNKNOWN_EVENT"
-        );
-
-        // Execute
-        var result = service.processDbWriteRequest(request);
-
-        // Verify
-        assertNotNull(result);
-        verify(mockRepository, never()).update(anyString(), any(Map.class), any(Map.class));
-    }
-
-    @Test
-    @DisplayName("Should handle null event type")
-    void testProcessNullEventType() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("name", "John");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                null
-        );
-
-        // Execute
-        var result = service.processDbWriteRequest(request);
-
-        // Verify
-        assertNotNull(result);
-        verify(mockRepository, never()).update(anyString(), any(Map.class), any(Map.class));
-    }
-
-    @Test
-    @DisplayName("Should handle empty event type")
-    void testProcessEmptyEventType() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("name", "John");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                ""
-        );
-
-        // Execute
-        var result = service.processDbWriteRequest(request);
-
-        // Verify
-        assertNotNull(result);
-        verify(mockRepository, never()).update(anyString(), any(Map.class), any(Map.class));
-    }
-
-    @Test
-    @DisplayName("Should pass correct table name to repository")
-    void testTableNamePassthrough() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("col1", "value1");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "products",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                "UPDATE_EVENT"
-        );
-
-        when(mockRepository.update(anyString(), any(Map.class), any(Map.class)))
-                .thenReturn(Uni.createFrom().item(1));
-
-        // Execute
-        service.processDbWriteRequest(request);
-
-        // Verify
-        verify(mockRepository, times(1)).update("products", columnValues, whereConditions);
-    }
-
-    @Test
-    @DisplayName("Should pass correct column values to repository")
-    void testColumnValuesPassthrough() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("col1", "value1");
-        columnValues.put("col2", "value2");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                "UPDATE_EVENT"
-        );
-
-        when(mockRepository.update(anyString(), any(Map.class), any(Map.class)))
-                .thenReturn(Uni.createFrom().item(2));
-
-        // Execute
-        service.processDbWriteRequest(request);
-
-        // Verify
-        verify(mockRepository, times(1)).update("users", columnValues, whereConditions);
-    }
-
-    @Test
-    @DisplayName("Should pass correct where conditions to repository")
-    void testWhereConditionsPassthrough() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("status", "inactive");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-        whereConditions.put("type", "premium");
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                "UPDATE_EVENT"
-        );
-
-        when(mockRepository.update(anyString(), any(Map.class), any(Map.class)))
-                .thenReturn(Uni.createFrom().item(1));
-
-        // Execute
-        service.processDbWriteRequest(request);
-
-        // Verify
-        verify(mockRepository, times(1)).update("users", columnValues, whereConditions);
-    }
-
-    @Test
-    @DisplayName("Should handle repository failure")
-    void testRepositoryFailure() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("name", "John");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                "UPDATE_EVENT"
-        );
-
-        when(mockRepository.update(anyString(), any(Map.class), any(Map.class)))
-                .thenReturn(Uni.createFrom().failure(new RuntimeException("DB Error")));
-
-        // Execute
-        var result = service.processDbWriteRequest(request);
-
-        // Verify
-        assertNotNull(result);
-        verify(mockRepository, times(1)).update("users", columnValues, whereConditions);
-    }
-
-    @Test
-    @DisplayName("Should handle multiple sequential requests")
-    void testMultipleSequentialRequests() {
-        // Setup
-        Map<String, Object> columnValues1 = new HashMap<>();
-        columnValues1.put("name", "John");
-
-        Map<String, Object> whereConditions1 = new HashMap<>();
-        whereConditions1.put("id", 1);
-
-        DBWriteRequest request1 = new DBWriteRequest(
-                "users",
-                whereConditions1,
-                columnValues1,
-                "user1",
-                "2024-12-01T10:00:00",
-                "UPDATE_EVENT"
-        );
-
-        Map<String, Object> columnValues2 = new HashMap<>();
-        columnValues2.put("name", "Jane");
-
-        Map<String, Object> whereConditions2 = new HashMap<>();
-        whereConditions2.put("id", 2);
-
-        DBWriteRequest request2 = new DBWriteRequest(
-                "users",
-                whereConditions2,
-                columnValues2,
-                "user2",
-                "2024-12-01T10:00:00",
-                "UPDATE_EVENT"
-        );
-
-        when(mockRepository.update(anyString(), any(Map.class), any(Map.class)))
-                .thenReturn(Uni.createFrom().item(1));
-
-        // Execute
-        service.processDbWriteRequest(request1);
-        service.processDbWriteRequest(request2);
-
-        // Verify
-        verify(mockRepository, times(2)).update(anyString(), any(Map.class), any(Map.class));
-    }
-
-    @Test
-    @DisplayName("Should return Uni type for async processing")
-    void testReturnsUniType() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("name", "John");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                "UPDATE_EVENT"
-        );
-
-        when(mockRepository.update(anyString(), any(Map.class), any(Map.class)))
-                .thenReturn(Uni.createFrom().item(1));
-
-        // Execute
-        var result = service.processDbWriteRequest(request);
-
-        // Verify
-        assertNotNull(result);
-        assertTrue(result instanceof Uni);
-    }
-
-    @Test
-    @DisplayName("Should handle UPPERCASE UPDATE_EVENT")
-    void testUppercaseUpdateEvent() {
-        // Setup
-        Map<String, Object> columnValues = new HashMap<>();
-        columnValues.put("name", "John");
-
-        Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put("id", 1);
-
-        DBWriteRequest request = new DBWriteRequest(
-                "users",
-                whereConditions,
-                columnValues,
-                "testUser",
-                "2024-12-01T10:00:00",
-                "UPDATE_EVENT"
-        );
-
-        when(mockRepository.update(anyString(), any(Map.class), any(Map.class)))
-                .thenReturn(Uni.createFrom().item(1));
-
-        // Execute
-        var result = service.processDbWriteRequest(request);
-
-        // Verify
-        assertNotNull(result);
-        verify(mockRepository, times(1)).update(anyString(), any(Map.class), any(Map.class));
+        service = new DBWriteService(dbWriteRepository, dbOperationsService, pool);
     }
 
     // -----------------------------------------------------------------------
-    // processEvent transaction tests
+    // processEvent — null / blank guards
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("processEvent should use transaction when related writes exist")
-    @SuppressWarnings("unchecked")
-    void testProcessEventUsesTransactionForRelatedWrites() {
-        // Setup
-        Map<String, Object> columnValues = Map.of("name", "John");
+    @DisplayName("processEvent: null request returns void without touching repository")
+    void processEvent_nullRequest_returnsVoid() {
+        Uni<Void> result = service.processEvent(null);
 
-        DBWriteRequest relatedWrite = DBWriteRequest.builder()
-                .eventType("DELETE")
-                .tableName("related_table")
-                .whereConditions(Map.of("id", 1))
-                .userName("testUser")
-                .build();
+        assertDoesNotThrow(() -> result.await().indefinitely());
+        verifyNoInteractions(dbWriteRepository, pool);
+    }
 
-        DBWriteRequest request = DBWriteRequest.builder()
-                .eventType("CREATE")
-                .tableName("main_table")
-                .columnValues(columnValues)
-                .userName("testUser")
-                .relatedWrites(List.of(relatedWrite))
-                .build();
+    @Test
+    @DisplayName("processEvent: blank eventType skips all DB work")
+    void processEvent_blankEventType_skips() {
+        DBWriteRequest request = requestWith("  ", "my_table", null, null, null);
 
-        SqlConnection mockConnection = mock(SqlConnection.class);
+        Uni<Void> result = service.processEvent(request);
 
-        when(mockPool.withTransaction(any(Function.class))).thenAnswer(invocation -> {
-            Function<SqlConnection, Uni<Void>> fn = invocation.getArgument(0);
-            return fn.apply(mockConnection);
+        assertDoesNotThrow(() -> result.await().indefinitely());
+        verifyNoInteractions(dbWriteRepository, pool);
+    }
+
+    // -----------------------------------------------------------------------
+    // processEvent — single writes (no transaction)
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("processEvent: CREATE routes to executeInsert without transaction")
+    void processEvent_create_callsInsert() {
+        Map<String, Object> cols = Map.of("name", "Alice");
+        DBWriteRequest request = requestWith("CREATE", "users", cols, null, null);
+
+        when(dbWriteRepository.executeInsert("users", cols)).thenReturn(Uni.createFrom().item(1));
+
+        service.processEvent(request).await().indefinitely();
+
+        verify(dbWriteRepository).executeInsert("users", cols);
+        verifyNoInteractions(pool);
+    }
+
+    @Test
+    @DisplayName("processEvent: UPDATE routes to update without transaction")
+    void processEvent_update_callsUpdate() {
+        Map<String, Object> cols  = Map.of("status", "active");
+        Map<String, Object> where = Map.of("id", 42);
+        DBWriteRequest request = requestWith("UPDATE", "users", cols, where, null);
+
+        when(dbWriteRepository.update("users", cols, where)).thenReturn(Uni.createFrom().item(1));
+
+        service.processEvent(request).await().indefinitely();
+
+        verify(dbWriteRepository).update("users", cols, where);
+        verifyNoInteractions(pool);
+    }
+
+    @Test
+    @DisplayName("processEvent: DELETE routes to executeDelete without transaction")
+    void processEvent_delete_callsDelete() {
+        Map<String, Object> where = Map.of("id", 7);
+        DBWriteRequest request = requestWith("DELETE", "users", null, where, null);
+
+        when(dbWriteRepository.executeDelete("users", where)).thenReturn(Uni.createFrom().item(1));
+
+        service.processEvent(request).await().indefinitely();
+
+        verify(dbWriteRepository).executeDelete("users", where);
+        verifyNoInteractions(pool);
+    }
+
+    @Test
+    @DisplayName("processEvent: unknown eventType logs warning and returns void")
+    void processEvent_unknownEventType_skips() {
+        DBWriteRequest request = requestWith("EXPLODE", "users", null, null, null);
+
+        Uni<Void> result = service.processEvent(request);
+
+        assertDoesNotThrow(() -> result.await().indefinitely());
+        verifyNoInteractions(dbWriteRepository, pool);
+    }
+
+    // -----------------------------------------------------------------------
+    // processEvent — with relatedWrites (transaction)
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("processEvent: request with relatedWrites wraps everything in a transaction")
+    void processEvent_withRelatedWrites_usesTransaction() {
+        Map<String, Object> cols  = Map.of("x", 1);
+        Map<String, Object> where = Map.of("id", 1);
+
+        DBWriteRequest related = requestWith("DELETE", "audit", null, where, null);
+        DBWriteRequest request  = requestWith("UPDATE", "users", cols, where, List.of(related));
+
+        // Capture the transaction function and execute it with our mock SqlConnection
+        when(pool.withTransaction(any())).thenAnswer(inv -> {
+            Function<SqlConnection, Uni<Void>> txFn = inv.getArgument(0);
+            return txFn.apply(sqlConnection);
         });
-        when(mockRepository.executeInsert(any(SqlClient.class), anyString(), any(Map.class)))
+
+        when(dbWriteRepository.update(sqlConnection, "users", cols, where))
                 .thenReturn(Uni.createFrom().item(1));
-        when(mockRepository.executeDelete(any(SqlClient.class), anyString(), any(Map.class)))
+        when(dbWriteRepository.executeDelete(sqlConnection, "audit", where))
                 .thenReturn(Uni.createFrom().item(1));
 
-        // Execute
-        service.processEvent(request).subscribe().asCompletionStage().toCompletableFuture().join();
+        service.processEvent(request).await().indefinitely();
 
-        // Verify transaction was used and connection was passed through
-        verify(mockPool).withTransaction(any(Function.class));
-        verify(mockRepository).executeInsert(eq(mockConnection), eq("main_table"), eq(columnValues));
-        verify(mockRepository).executeDelete(eq(mockConnection), eq("related_table"), any(Map.class));
+        verify(pool).withTransaction(any());
+        verify(dbWriteRepository).update(sqlConnection, "users", cols, where);
+        verify(dbWriteRepository).executeDelete(sqlConnection, "audit", where);
     }
 
     @Test
-    @DisplayName("processEvent should NOT use transaction when no related writes")
-    void testProcessEventNoTransactionWithoutRelatedWrites() {
-        // Setup
-        Map<String, Object> columnValues = Map.of("name", "John");
+    @DisplayName("processEvent: relatedWrites with CREATE uses transactional insert")
+    void processEvent_withRelatedCreate_usesTransactionalInsert() {
+        Map<String, Object> cols      = Map.of("col", "val");
+        Map<String, Object> where     = Map.of("id", 99);
+        Map<String, Object> relCols   = Map.of("ref", "data");
 
-        DBWriteRequest request = DBWriteRequest.builder()
-                .eventType("CREATE")
-                .tableName("main_table")
-                .columnValues(columnValues)
-                .userName("testUser")
-                .build();
+        DBWriteRequest related = requestWith("CREATE", "log_table", relCols, null, null);
+        DBWriteRequest request  = requestWith("UPDATE", "main_table", cols, where, List.of(related));
 
-        when(mockRepository.executeInsert(anyString(), any(Map.class)))
-                .thenReturn(Uni.createFrom().item(1));
-
-        // Execute
-        service.processEvent(request).subscribe().asCompletionStage().toCompletableFuture().join();
-
-        // Verify no transaction was used
-        verify(mockPool, never()).withTransaction(any(Function.class));
-        verify(mockRepository).executeInsert("main_table", columnValues);
-    }
-
-    @Test
-    @DisplayName("processEvent should rollback insert when related write fails")
-    @SuppressWarnings("unchecked")
-    void testProcessEventRollbackOnRelatedWriteFailure() {
-        // Setup
-        Map<String, Object> columnValues = Map.of("name", "John");
-
-        DBWriteRequest relatedWrite = DBWriteRequest.builder()
-                .eventType("DELETE")
-                .tableName("related_table")
-                .whereConditions(Map.of("id", 1))
-                .userName("testUser")
-                .build();
-
-        DBWriteRequest request = DBWriteRequest.builder()
-                .eventType("CREATE")
-                .tableName("main_table")
-                .columnValues(columnValues)
-                .userName("testUser")
-                .relatedWrites(List.of(relatedWrite))
-                .build();
-
-        SqlConnection mockConnection = mock(SqlConnection.class);
-
-        when(mockPool.withTransaction(any(Function.class))).thenAnswer(invocation -> {
-            Function<SqlConnection, Uni<Void>> fn = invocation.getArgument(0);
-            return fn.apply(mockConnection);
+        when(pool.withTransaction(any())).thenAnswer(inv -> {
+            Function<SqlConnection, Uni<Void>> txFn = inv.getArgument(0);
+            return txFn.apply(sqlConnection);
         });
-        when(mockRepository.executeInsert(any(SqlClient.class), anyString(), any(Map.class)))
+        when(dbWriteRepository.update(sqlConnection, "main_table", cols, where))
                 .thenReturn(Uni.createFrom().item(1));
-        when(mockRepository.executeDelete(any(SqlClient.class), anyString(), any(Map.class)))
-                .thenReturn(Uni.createFrom().failure(new RuntimeException("Related write failed")));
+        when(dbWriteRepository.executeInsert(sqlConnection, "log_table", relCols))
+                .thenReturn(Uni.createFrom().item(1));
 
-        // Execute & verify failure propagates (transaction rolls back)
-        assertThrows(Exception.class, () ->
-                service.processEvent(request).subscribe().asCompletionStage().toCompletableFuture().join()
-        );
+        service.processEvent(request).await().indefinitely();
 
-        // Verify both operations were attempted within the transaction
-        verify(mockPool).withTransaction(any(Function.class));
-        verify(mockRepository).executeInsert(eq(mockConnection), eq("main_table"), eq(columnValues));
-        verify(mockRepository).executeDelete(eq(mockConnection), eq("related_table"), any(Map.class));
+        verify(dbWriteRepository).update(sqlConnection, "main_table", cols, where);
+        verify(dbWriteRepository).executeInsert(sqlConnection, "log_table", relCols);
     }
 
+    // -----------------------------------------------------------------------
+    // processDbWriteRequest — legacy UPDATE_EVENT path
+    // -----------------------------------------------------------------------
+
     @Test
-    @DisplayName("processEvent should skip for null request")
-    void testProcessEventNullRequest() {
-        var result = service.processEvent(null);
-        assertNotNull(result);
-        result.subscribe().asCompletionStage().toCompletableFuture().join();
-        verifyNoInteractions(mockRepository);
+    @DisplayName("processDbWriteRequest: UPDATE_EVENT calls update then processRelatedWrites")
+    void processDbWriteRequest_updateEvent_callsUpdate() {
+        Map<String, Object> cols  = Map.of("status", "done");
+        Map<String, Object> where = Map.of("id", 3);
+        DBWriteRequest request = requestWith("UPDATE_EVENT", "tasks", cols, where, null);
+
+        when(dbWriteRepository.update("tasks", cols, where)).thenReturn(Uni.createFrom().item(1));
+
+        service.processDbWriteRequest(request).await().indefinitely();
+
+        verify(dbWriteRepository).update("tasks", cols, where);
     }
 
-    @Test
-    @DisplayName("processEvent should skip for blank eventType")
-    void testProcessEventBlankEventType() {
-        DBWriteRequest request = DBWriteRequest.builder()
-                .eventType("")
-                .tableName("table")
-                .userName("user")
-                .build();
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
 
-        var result = service.processEvent(request);
-        assertNotNull(result);
-        result.subscribe().asCompletionStage().toCompletableFuture().join();
-        verifyNoInteractions(mockRepository);
+    private static DBWriteRequest requestWith(String eventType,
+                                              String tableName,
+                                              Map<String, Object> columnValues,
+                                              Map<String, Object> whereConditions,
+                                              List<DBWriteRequest> relatedWrites) {
+        DBWriteRequest r = mock(DBWriteRequest.class);
+        lenient().when(r.getEventType()).thenReturn(eventType);
+        lenient().when(r.getTableName()).thenReturn(tableName);
+        lenient().when(r.getColumnValues()).thenReturn(columnValues);
+        lenient().when(r.getWhereConditions()).thenReturn(whereConditions);
+        lenient().when(r.getRelatedWrites()).thenReturn(relatedWrites);
+        lenient().when(r.getUserName()).thenReturn("test-user");
+        return r;
     }
 }

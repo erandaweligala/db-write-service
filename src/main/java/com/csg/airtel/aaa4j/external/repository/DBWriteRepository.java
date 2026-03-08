@@ -146,6 +146,7 @@ public class DBWriteRepository {
                                       String tableName,
                                       Map<String, Object> columnValues) {
 
+
         if (!circuitBreaker.allowRequest()) {
             log.warn("Circuit breaker is OPEN, rejecting database insert request");
             metrics.recordDbUpdateFailure();
@@ -322,3 +323,4 @@ public class DBWriteRepository {
         return value;
     }
 }
+// commit test

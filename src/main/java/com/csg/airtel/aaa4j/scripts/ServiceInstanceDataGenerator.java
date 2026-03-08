@@ -228,16 +228,16 @@ public class ServiceInstanceDataGenerator {
         int choice = random.nextInt(100);
         LocalDateTime now = LocalDateTime.now();
 
-        if (choice < 5) {
-            // 5% future (1-30 days ahead)
-            return now.plusDays(random.nextInt(30) + 1);
-        } else if (choice < 45) {
-            // 40% today
-            return now.minusHours(random.nextInt(24));
-        } else {
+//        if (choice < 5) {
+//            // 5% future (1-30 days ahead)
+//            return now.plusDays(random.nextInt(30) + 1);
+//        } else if (choice < 45) {
+//            // 40% today
+//            return now.minusHours(random.nextInt(24));
+//        } else {
             // 55% past (1-365 days ago)
             return now.minusDays(random.nextInt(365) + 1);
-        }
+   //     }
     }
 
     /**

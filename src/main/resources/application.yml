@@ -1,44 +1,49 @@
-# Server Configuration
+# ============================================================
+# LOCAL CONFIGURATION
+# ============================================================
+
 quarkus:
   http:
     port: 8085
+
+  # =========================
+  # ORACLE DATASOURCE (LOCAL)
+  # =========================
   datasource:
     db-kind: oracle
-    username: CYA_AAA_OPS
-    password: UkkaNk8KnAPp19!
+    username: aaa_app
+    password: password123
+
     reactive:
-      url: oracle:thin:@172.24.0.203:1908/AAA
+      url: oracle:thin:@localhost:1521/XEPDB1
+
     jdbc:
-      url: oracle:thin:@172.24.0.203:1908/AAA
+      url: oracle:thin:@localhost:1521/XEPDB1
       driver: oracle.jdbc.OracleDriver
 
-  vertx:
-    # High-TPS optimization: Match event loops to CPU cores for optimal performance
-    event-loops-pool-size: 8
-    internal-blocking-pool-size: 100
-    warning-exception-time: 10s
-    max-event-loop-execute-time: 5s
-    max-worker-execute-time: 60s
-    prefer-native-transport: true
-    caching: false
-
-
+  # =========================
+  # LOGGING
+  # =========================
   console:
     color: true
+
   log:
     level: INFO
+
     file:
-      path: /var/log/db-write/db-write.log
+      path: logs/db-write.log
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
       rotation:
-        max-file-size: 100M
-        max-backup-index: 10
+        max-file-size: 50M
+        max-backup-index: 5
         rotate-on-boot: true
+
     console:
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+
     category:
       "org.apache.kafka":
-        level: INFO
+        level: WARN
       "io.smallrye.reactive.messaging.kafka":
         level: INFO
       "io.quarkus.config":
@@ -46,52 +51,55 @@ quarkus:
       "io.smallrye.config":
         level: INFO
       "com.csg.airtel.aaa4j":
-        level: INFO
+        level: DEBUG
 
+  # =========================
+  # REDIS (LOCAL – NO SENTINEL)
+  # =========================
   redis:
-    client-type: sentinel
-    hosts: redis://redis-cluster.csg-aaa-query-cache.svc.cluster.local:26379
-    master-name: mymaster
-    role: master
-    password: S3cure_Redis_Pass_w0rd!
-    max-pool-size: 600
-    max-waiting-handlers: 12000
-    max-pool-waiting: 3000
-    pool-recycle-timeout: 240000
-    reconnect-attempts: 3
-    reconnect-interval: 500
-    pool-cleaner-interval: 20000
-    timeout: 120000
+    hosts: redis://localhost:6379
+    password: ""
+    timeout: 60000
 
+# ============================================================
+# DATABASE POOL SETTINGS
+# ============================================================
 
 pool:
-  max-size: 32                      # Max connections
-  connection-timeout: 5000          # 5 seconds to acquire connection
-  idle-timeout: 600000              # 10 minutes idle before closing
-  max-lifetime: 1800000             # 30 minutes max connection lifetime
-  acquire-increment: 4              # Connections to acquire at once
-  prepared-statement-cache-max-size: 256  # Cache prepared statements
-  pipelining-enabled: true          # Enable query pipelining
-  pipelining-limit: 256             # Max pipelined queries
-  event-loop-size: 32               # Match vertx event-loops-pool-size
-  tcp-keep-alive: true              # Detect dead connections
-  tcp-no-delay: true                # Reduce latency
-  pool-cleaner-enabled: true        # Clean idle connections
-  pool-cleaner-interval: 60000      # Clean every minute
+  max-size: 20
+  connection-timeout: 5000
+  idle-timeout: 600000
+  max-lifetime: 1800000
+  acquire-increment: 2
+  prepared-statement-cache-max-size: 128
+  pipelining-enabled: true
+  pipelining-limit: 128
+  event-loop-size: 16
+  tcp-keep-alive: true
+  tcp-no-delay: true
+  pool-cleaner-enabled: true
+  pool-cleaner-interval: 60000
 
-# Kafka Configuration
+# ============================================================
+# KAFKA (LOCAL)
+# ============================================================
 
 kafka:
   bootstrap:
-    servers: kafka-headless.csg-aaa-query-cache.svc.cluster.local:9092
+    servers: localhost:9092
 
 mp:
   messaging:
+
+    # ------------------------
+    # DC → DR Channel (UNTOUCHED)
+    # ------------------------
     incoming:
       db-write-events:
         connector: smallrye-kafka
         topic: dctodr-dc
         group.id: accounting-dc-group
+        bootstrap.servers: localhost:9092
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
@@ -99,21 +107,42 @@ mp:
         max.poll.records: 100
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
         failure-strategy: ignore
 
-
+      # ------------------------
+      # DR Provisioning Channel (FIXED)
+      # ------------------------
       db-write-events-dr:
         connector: smallrye-kafka
         topic: dc-provisioning
-        group.id: accounting-dc-group
-        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
-        value.deserializer.class: com.csg.airtel.aaa4j.domain.model.DBWriteRequest
-        value.deserializer.trusted-packages: "*"
+        group.id: provisioning-reply-group
+        bootstrap.servers: localhost:9092
+        value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
         max.poll.records: 100
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        # FIX 3: failure-strategy was missing heartbeat.interval.ms, meaning
+        #         under slow DB writes the broker could mark the consumer dead
+        #         mid-processing before the ack+reply could be sent.
+        #         Also kept failure-strategy: ignore since the consumer already
+        #         handles failures internally and sends FAIL replies itself —
+        #         letting Quarkus nack would halt the consumer (same bug as before).
         failure-strategy: ignore
- 
+
+    # ------------------------
+    # Reply Channel (to Spring) — UNTOUCHED
+    # ------------------------
+    outgoing:
+      responses-out:
+        connector: smallrye-kafka
+        bootstrap.servers: localhost:9092
+        topic: db-write-events-reply-plan,db-write-events-reply-provisioning
+        key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        value.serializer: org.apache.kafka.common.serialization.StringSerializer
+        linger.ms: 0
+        acks: 1

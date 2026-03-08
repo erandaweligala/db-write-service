@@ -482,7 +482,7 @@ public class BulkInsertScript {
                         values.add(LocalDateTime.now());
                         values.add(String.valueOf(random.nextInt(3600) + 60));
                         values.add(8);
-                        values.add(1);
+                        values.add(0);
                         values.add(1);
                         values.add(String.valueOf(random.nextInt(1800) + 300));
                         values.add(generateIPAllocation());

@@ -18,7 +18,7 @@ public class DBWriteService {
     final DBWriteRepository dbWriteRepository;
     final DBOperationsService dbOperationsService;
     final Pool pool;
-
+//test commit
     @Inject
     public DBWriteService(DBWriteRepository dbWriteRepository, DBOperationsService dbOperationsService, Pool pool) {
         this.dbWriteRepository = dbWriteRepository;
@@ -62,9 +62,6 @@ public class DBWriteService {
         boolean hasRelatedWrites = request.getRelatedWrites() != null && !request.getRelatedWrites().isEmpty();
 
         if (hasRelatedWrites) {
-            // Wrap primary write + related writes in a single database transaction.
-            // If any related write fails, the entire transaction (including the
-            // primary insert/update/delete) is rolled back automatically.
             return pool.withTransaction(conn ->
                     processSingleWrite(conn, request)
                             .chain(() -> processRelatedWrites(conn, request))
