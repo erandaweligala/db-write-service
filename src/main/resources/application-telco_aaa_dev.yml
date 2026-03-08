@@ -68,6 +68,13 @@ pool:
   pool-cleaner-enabled: true        # Clean idle connections
   pool-cleaner-interval: 60000      # Clean every minute
 
+# =========================
+# SITE IDENTITY
+# =========================
+# Override with app.site=DR for DR-site deployment
+app:
+  site: DC
+
 # Kafka Configuration
 
 kafka:
@@ -77,6 +84,7 @@ kafka:
 mp:
   messaging:
     incoming:
+      # DC→DR accounting channel
       db-write-events:
         connector: smallrye-kafka
         topic: DC-DR
@@ -86,12 +94,27 @@ mp:
         auto.offset.reset: earliest
         enable.auto.commit: false
         max.poll.records: 100
-        max.poll.interval.ms: 10000   # ← was 300000 (5 min), reduced to match reply window
-        session.timeout.ms: 10000     # ← was 30000, aligned with Spring consumer
-        heartbeat.interval.ms: 3000   # ← added, must be < session.timeout.ms / 3
+        max.poll.interval.ms: 10000
+        session.timeout.ms: 10000
+        heartbeat.interval.ms: 3000
         failure-strategy: ignore
 
+      # DR→DC accounting channel (reverse direction)
+      db-write-events-reverse:
+        connector: smallrye-kafka
+        topic: DR-DC
+        group.id: accounting-dr-group
+        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: earliest
+        enable.auto.commit: false
+        max.poll.records: 100
+        max.poll.interval.ms: 10000
+        session.timeout.ms: 10000
+        heartbeat.interval.ms: 3000
+        failure-strategy: ignore
 
+      # DC→DR provisioning channel (request-reply)
       db-write-events-dr:
         connector: smallrye-kafka
         topic: dc-provisioning
@@ -105,3 +128,25 @@ mp:
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
         failure-strategy: ignore
+
+      # DR→DC provisioning channel (reverse request-reply)
+      db-write-events-dc:
+        connector: smallrye-kafka
+        topic: dr-provisioning
+        group.id: provisioning-reply-dc-group
+        value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: earliest
+        enable.auto.commit: false
+        max.poll.records: 100
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        failure-strategy: ignore
+
+    # Outgoing: provisioning reply channel (topic set dynamically per-message)
+    outgoing:
+      responses-out:
+        connector: smallrye-kafka
+        value.serializer: org.apache.kafka.common.serialization.StringSerializer
+        key.serializer: org.apache.kafka.common.serialization.StringSerializer

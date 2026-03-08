@@ -78,6 +78,14 @@ pool:
   pool-cleaner-interval: 60000
 
 
+# =========================
+# SITE IDENTITY
+# =========================
+# Set to DC or DR depending on which site this instance runs on.
+# Override per-environment via QUARKUS_PROFILE or app.site env variable.
+app:
+  site: DC
+
 kafka:
   bootstrap:
     servers: localhost:9092
@@ -86,6 +94,12 @@ mp:
   messaging:
 
     incoming:
+      # ------------------------------------------------
+      # DC→DR accounting channel
+      # Events published by DC-side services (Auth, Accounting, CDR, etc.)
+      # Mirrored to DR Kafka cluster via cross-site replication.
+      # Both DC and DR DB Write Services consume this topic.
+      # ------------------------------------------------
       db-write-events:
         connector: smallrye-kafka
         topic: DC-DR
@@ -101,9 +115,30 @@ mp:
         heartbeat.interval.ms: 10000
         failure-strategy: ignore
 
-      # ------------------------
-      # DR Provisioning Channel (FIXED)
-      # ------------------------
+      # ------------------------------------------------
+      # DR→DC accounting channel (reverse direction)
+      # Events published by DR-side services when DR is active.
+      # Mirrored to DC Kafka cluster via cross-site replication.
+      # Both DC and DR DB Write Services consume this topic.
+      # ------------------------------------------------
+      db-write-events-reverse:
+        connector: smallrye-kafka
+        topic: DR-DC
+        group.id: accounting-dr-group
+        bootstrap.servers: localhost:9092
+        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: earliest
+        enable.auto.commit: false
+        max.poll.records: 100
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        failure-strategy: ignore
+
+      # ------------------------------------------------
+      # DC→DR provisioning channel (request-reply)
+      # ------------------------------------------------
       db-write-events-dr:
         connector: smallrye-kafka
         topic: dc-provisioning
@@ -118,3 +153,32 @@ mp:
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
         failure-strategy: ignore
+
+      # ------------------------------------------------
+      # DR→DC provisioning channel (reverse request-reply)
+      # ------------------------------------------------
+      db-write-events-dc:
+        connector: smallrye-kafka
+        topic: dr-provisioning
+        group.id: provisioning-reply-dc-group
+        bootstrap.servers: localhost:9092
+        value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: earliest
+        enable.auto.commit: false
+        max.poll.records: 100
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        failure-strategy: ignore
+
+    # ------------------------------------------------
+    # Outgoing: provisioning reply channel
+    # Topic is set dynamically per-message via metadata.
+    # ------------------------------------------------
+    outgoing:
+      responses-out:
+        connector: smallrye-kafka
+        bootstrap.servers: localhost:9092
+        value.serializer: org.apache.kafka.common.serialization.StringSerializer
+        key.serializer: org.apache.kafka.common.serialization.StringSerializer

@@ -28,15 +28,7 @@ public class DBWriteService {
 
     @LogDomainService
     public Uni<Void> processDbWriteRequest(DBWriteRequest dbWriteRequest) {
-        if ("UPDATE_EVENT".equalsIgnoreCase(dbWriteRequest.getEventType())) {
-            return dbWriteRepository.update(
-                            dbWriteRequest.getTableName(),
-                            dbWriteRequest.getColumnValues(),
-                            dbWriteRequest.getWhereConditions()
-                    ).replaceWithVoid()
-                    .chain(() -> processRelatedWrites(dbWriteRequest)); // ADD THIS
-        }
-        return Uni.createFrom().voidItem();
+        return processEvent(dbWriteRequest);
     }
 
 
