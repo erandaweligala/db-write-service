@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.application.aspect.LogDomainService;
+import com.csg.airtel.aaa4j.application.listner.SyncEventProducer;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.external.repository.DBWriteRepository;
 import io.smallrye.mutiny.Uni;
@@ -17,31 +18,55 @@ public class DBWriteService {
     private static final Logger log = Logger.getLogger(DBWriteService.class);
     final DBWriteRepository dbWriteRepository;
     final DBOperationsService dbOperationsService;
+    final SyncEventProducer syncEventProducer;
     final Pool pool;
-//test commit
+
     @Inject
-    public DBWriteService(DBWriteRepository dbWriteRepository, DBOperationsService dbOperationsService, Pool pool) {
+    public DBWriteService(DBWriteRepository dbWriteRepository,
+                          DBOperationsService dbOperationsService,
+                          SyncEventProducer syncEventProducer,
+                          Pool pool) {
         this.dbWriteRepository = dbWriteRepository;
         this.dbOperationsService = dbOperationsService;
+        this.syncEventProducer = syncEventProducer;
         this.pool = pool;
     }
 
     @LogDomainService
     public Uni<Void> processDbWriteRequest(DBWriteRequest dbWriteRequest) {
+        return processDbWriteRequestAndSync(dbWriteRequest, true);
+    }
+
+    /**
+     * Process a DB write request. If publishSync is true, the event will be
+     * published to the remote site after successful local application.
+     * Set publishSync=false for events received FROM the remote site.
+     */
+    Uni<Void> processDbWriteRequestAndSync(DBWriteRequest dbWriteRequest, boolean publishSync) {
         if ("UPDATE_EVENT".equalsIgnoreCase(dbWriteRequest.getEventType())) {
             return dbWriteRepository.update(
                             dbWriteRequest.getTableName(),
                             dbWriteRequest.getColumnValues(),
                             dbWriteRequest.getWhereConditions()
                     ).replaceWithVoid()
-                    .chain(() -> processRelatedWrites(dbWriteRequest)); // ADD THIS
+                    .chain(() -> processRelatedWrites(dbWriteRequest))
+                    .chain(() -> publishSync
+                            ? syncEventProducer.publishForSync(dbWriteRequest)
+                            : Uni.createFrom().voidItem());
         }
         return Uni.createFrom().voidItem();
     }
 
-
     @LogDomainService
     public Uni<Void> processEvent(DBWriteRequest request) {
+        return processEventAndSync(request, true);
+    }
+
+    /**
+     * Process an event with optional sync publishing.
+     * Called by SyncEventConsumer with publishSync=false to avoid re-publishing.
+     */
+    public Uni<Void> processEventAndSync(DBWriteRequest request, boolean publishSync) {
 
         if (request == null) {
             log.warn("Received null DBWriteRequest — skipping");
@@ -65,10 +90,15 @@ public class DBWriteService {
             return pool.withTransaction(conn ->
                     processSingleWrite(conn, request)
                             .chain(() -> processRelatedWrites(conn, request))
-            );
+            ).chain(() -> publishSync
+                    ? syncEventProducer.publishForSync(request)
+                    : Uni.createFrom().voidItem());
         }
 
-        return processSingleWrite(request);
+        return processSingleWrite(request)
+                .chain(() -> publishSync
+                        ? syncEventProducer.publishForSync(request)
+                        : Uni.createFrom().voidItem());
     }
 
     private Uni<Void> processSingleWrite(DBWriteRequest request) {
