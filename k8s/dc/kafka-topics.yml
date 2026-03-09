@@ -1,0 +1,80 @@
+# ============================================================
+# DC Site - Kafka Topics
+# ============================================================
+
+# --- DC-DR: Accounting events produced by DC services ---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: dc-dr
+  namespace: cluster-dc
+  labels:
+    strimzi.io/cluster: kafka-dc
+spec:
+  topicName: DC-DR
+  partitions: 12          # Must be >= consumer concurrency (8)
+  replicas: 3
+  config:
+    retention.ms: 604800000          # 7 days
+    cleanup.policy: delete
+    min.insync.replicas: 2
+    max.message.bytes: 1048576       # 1MB max message
+    compression.type: lz4
+
+---
+# --- DR-DC: Accounting events mirrored FROM DR ---
+# Created automatically by MirrorMaker 2, but define explicitly
+# to control partitions and config
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: dr-dc
+  namespace: cluster-dc
+  labels:
+    strimzi.io/cluster: kafka-dc
+spec:
+  topicName: DR-DC
+  partitions: 12
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    min.insync.replicas: 2
+    max.message.bytes: 1048576
+    compression.type: lz4
+
+---
+# --- dc-provisioning: Provisioning request-reply from DC ---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: dc-provisioning
+  namespace: cluster-dc
+  labels:
+    strimzi.io/cluster: kafka-dc
+spec:
+  topicName: dc-provisioning
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 86400000           # 1 day (shorter for request-reply)
+    cleanup.policy: delete
+    min.insync.replicas: 2
+
+---
+# --- dr-provisioning: Provisioning request-reply mirrored FROM DR ---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: dr-provisioning
+  namespace: cluster-dc
+  labels:
+    strimzi.io/cluster: kafka-dc
+spec:
+  topicName: dr-provisioning
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 86400000
+    cleanup.policy: delete
+    min.insync.replicas: 2

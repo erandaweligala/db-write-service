@@ -1,0 +1,94 @@
+# ============================================================
+# MirrorMaker 2 - Deployed at DC Site
+# Handles BOTH directions:
+#   DC→DR: Replicates DC-DR, dc-provisioning to DR cluster
+#   DR→DC: Replicates DR-DC, dr-provisioning to DC cluster
+# ============================================================
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaMirrorMaker2
+metadata:
+  name: kafka-mirror-maker2
+  namespace: cluster-dc
+spec:
+  version: 3.7.0
+  replicas: 2                    # 2 replicas for HA
+  connectCluster: dc
+
+  clusters:
+    - alias: dc
+      bootstrapServers: kafka-dc-kafka-bootstrap.cluster-dc.svc.cluster.local:9092
+    - alias: dr
+      bootstrapServers: kafka-dr-kafka-bootstrap.cluster-dr.svc.cluster.local:9092
+
+  mirrors:
+    # ---- DC → DR direction ----
+    - sourceCluster: dc
+      targetCluster: dr
+      topicsPattern: "DC-DR|dc-provisioning"
+      sourceConnector:
+        tasksMax: 4
+        config:
+          # CRITICAL: Keep same topic names on both clusters
+          replication.policy.class: org.apache.kafka.connect.mirror.IdentityReplicationPolicy
+          sync.topic.configs.enabled: true
+          sync.topic.acls.enabled: false
+          replication.factor: 3
+          # Producer tuning for throughput
+          producer.override.acks: all
+          producer.override.linger.ms: 5
+          producer.override.batch.size: 65536
+          producer.override.compression.type: lz4
+          # Consumer tuning
+          consumer.override.auto.offset.reset: earliest
+          consumer.override.max.poll.records: 500
+      # Sync consumer group offsets DC→DR
+      checkpointConnector:
+        tasksMax: 1
+        config:
+          replication.policy.class: org.apache.kafka.connect.mirror.IdentityReplicationPolicy
+          sync.group.offsets.enabled: true
+          sync.group.offsets.interval.seconds: 10
+          emit.checkpoints.interval.seconds: 30
+      heartbeatConnector:
+        config:
+          emit.heartbeats.interval.seconds: 5
+
+    # ---- DR → DC direction ----
+    - sourceCluster: dr
+      targetCluster: dc
+      topicsPattern: "DR-DC|dr-provisioning"
+      sourceConnector:
+        tasksMax: 4
+        config:
+          replication.policy.class: org.apache.kafka.connect.mirror.IdentityReplicationPolicy
+          sync.topic.configs.enabled: true
+          sync.topic.acls.enabled: false
+          replication.factor: 3
+          producer.override.acks: all
+          producer.override.linger.ms: 5
+          producer.override.batch.size: 65536
+          producer.override.compression.type: lz4
+          consumer.override.auto.offset.reset: earliest
+          consumer.override.max.poll.records: 500
+      # Sync consumer group offsets DR→DC
+      checkpointConnector:
+        tasksMax: 1
+        config:
+          replication.policy.class: org.apache.kafka.connect.mirror.IdentityReplicationPolicy
+          sync.group.offsets.enabled: true
+          sync.group.offsets.interval.seconds: 10
+          emit.checkpoints.interval.seconds: 30
+      heartbeatConnector:
+        config:
+          emit.heartbeats.interval.seconds: 5
+
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: "1"
+    limits:
+      memory: 4Gi
+      cpu: "2"
+  jvmOptions:
+    -Xms: 1024m
+    -Xmx: 2048m

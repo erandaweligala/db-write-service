@@ -1,0 +1,78 @@
+# ============================================================
+# DR Site - Kafka Topics
+# ============================================================
+
+# --- DR-DC: Accounting events produced by DR services ---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: dr-dc
+  namespace: cluster-dr
+  labels:
+    strimzi.io/cluster: kafka-dr
+spec:
+  topicName: DR-DC
+  partitions: 12
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    min.insync.replicas: 2
+    max.message.bytes: 1048576
+    compression.type: lz4
+
+---
+# --- DC-DR: Accounting events mirrored FROM DC ---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: dc-dr
+  namespace: cluster-dr
+  labels:
+    strimzi.io/cluster: kafka-dr
+spec:
+  topicName: DC-DR
+  partitions: 12
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    min.insync.replicas: 2
+    max.message.bytes: 1048576
+    compression.type: lz4
+
+---
+# --- dr-provisioning: Provisioning request-reply from DR ---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: dr-provisioning
+  namespace: cluster-dr
+  labels:
+    strimzi.io/cluster: kafka-dr
+spec:
+  topicName: dr-provisioning
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 86400000
+    cleanup.policy: delete
+    min.insync.replicas: 2
+
+---
+# --- dc-provisioning: Provisioning request-reply mirrored FROM DC ---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: dc-provisioning
+  namespace: cluster-dr
+  labels:
+    strimzi.io/cluster: kafka-dr
+spec:
+  topicName: dc-provisioning
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 86400000
+    cleanup.policy: delete
+    min.insync.replicas: 2
