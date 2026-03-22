@@ -30,7 +30,6 @@ public class LoggingUtil {
      * Log WARN level message with structured format
      */
     public static void logWarn(Logger logger, String method, String message, Object... args) {
-        if (!logger.isWarnEnabled()) return;
         logger.warn(buildMessage(method, message, args));
     }
 

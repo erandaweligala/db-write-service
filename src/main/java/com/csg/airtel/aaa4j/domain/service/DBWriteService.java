@@ -27,13 +27,11 @@ public class DBWriteService {
         this.pool = pool;
     }
 
-    @LogDomainService
     public Uni<Void> processDbWriteRequest(DBWriteRequest dbWriteRequest) {
         return processEvent(dbWriteRequest);
     }
 
 
-    @LogDomainService
     public Uni<Void> processEvent(DBWriteRequest request) {
 
         if (request == null) {

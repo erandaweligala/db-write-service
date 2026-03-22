@@ -41,12 +41,11 @@ public class DBWriteConsumer {
         this.dbWriteService = dbWriteService;
     }
 
-    // =========================================================================
-    // DC→DR accounting channel
-    // Topic: DC-DR
-    // Events published by DC-side services. Both DC and DR consume this topic.
-    // =========================================================================
-
+    /**
+    * DC→DR accounting channel
+    * Topic: DC-DR
+    *Events published by DC-side services. Both DC and DR consume this topic.
+     */
     @Incoming("db-write-events")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeAccountingEvent(Message<DBWriteRequest> message) {
@@ -72,12 +71,11 @@ public class DBWriteConsumer {
                 .onFailure().recoverWithItem((Void) null);
     }
 
-    // =========================================================================
-    // DR→DC accounting channel (reverse direction)
-    // Topic: DR-DC
-    // Events published by DR-side services. Both DC and DR consume this topic.
-    // =========================================================================
-
+    /**
+     * DR→DC accounting channel (reverse direction)
+     * Topic: DR-DC
+     * Events published by DR-side services. Both DC and DR consume this topic.
+     */
     @Incoming("db-write-events-reverse")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeReverseAccountingEvent(Message<DBWriteRequest> message) {
@@ -103,10 +101,6 @@ public class DBWriteConsumer {
                 .onFailure().recoverWithItem((Void) null);
     }
 
-    // =========================================================================
-    // DC→DR provisioning channel (request-reply)
-    // Topic: dc-provisioning
-    // =========================================================================
 
     @Incoming("db-write-events-dr")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
@@ -114,10 +108,6 @@ public class DBWriteConsumer {
         return handleProvisioningMessage(message, "dc-provisioning");
     }
 
-    // =========================================================================
-    // DR→DC provisioning channel (reverse request-reply)
-    // Topic: dr-provisioning
-    // =========================================================================
 
     @Incoming("db-write-events-dc")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
@@ -125,9 +115,6 @@ public class DBWriteConsumer {
         return handleProvisioningMessage(message, "dr-provisioning");
     }
 
-    // =========================================================================
-    // Shared provisioning handler
-    // =========================================================================
 
     private Uni<Void> handleProvisioningMessage(Message<String> message, String channelName) {
         LoggingUtil.logDebug(log, "handleProvisioningMessage", "[%s] %s payload = %s", site, channelName, message.getPayload());
