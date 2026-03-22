@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.application.aspect.LogDomainService;
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.external.repository.DBWriteRepository;
 import io.smallrye.mutiny.Uni;
@@ -36,19 +37,20 @@ public class DBWriteService {
     public Uni<Void> processEvent(DBWriteRequest request) {
 
         if (request == null) {
-            log.warn("Received null DBWriteRequest — skipping");
+            LoggingUtil.logWarn(log, "processEvent", "Received null DBWriteRequest — skipping");
             return Uni.createFrom().voidItem();
         }
 
         String eventType = request.getEventType();
 
         if (eventType == null || eventType.isBlank()) {
-            log.warnf("Received request with null/blank eventType for user: %s, table: %s — skipping",
+            LoggingUtil.logWarn(log, "processEvent",
+                    "Received request with null/blank eventType for user: %s, table: %s — skipping",
                     request.getUserName(), request.getTableName());
             return Uni.createFrom().voidItem();
         }
 
-        log.infof("Processing eventType=%s for user=%s on table=%s",
+        LoggingUtil.logDebug(log, "processEvent", "Processing eventType=%s for user=%s on table=%s",
                 eventType, request.getUserName(), request.getTableName());
 
         boolean hasRelatedWrites = request.getRelatedWrites() != null && !request.getRelatedWrites().isEmpty();
@@ -60,8 +62,9 @@ public class DBWriteService {
                                 if (rowCount > 0) {
                                     return processRelatedWrites(conn, request);
                                 } else {
-                                    log.infof("Parent insert was duplicate (0 rows affected), " +
-                                                    "skipping related writes for user=%s, table=%s",
+                                    LoggingUtil.logDebug(log, "processEvent",
+                                            "Parent insert was duplicate (0 rows affected), " +
+                                            "skipping related writes for user=%s, table=%s",
                                             request.getUserName(), request.getTableName());
                                     return Uni.createFrom().voidItem();
                                 }
@@ -94,7 +97,7 @@ public class DBWriteService {
                     ).replaceWithVoid();
 
             default -> {
-                log.warnf("Unknown eventType: '%s' for user: %s — skipping",
+                LoggingUtil.logWarn(log, "processSingleWrite", "Unknown eventType: '%s' for user: %s — skipping",
                         request.getEventType(), request.getUserName());
                 yield Uni.createFrom().voidItem();
             }
@@ -126,7 +129,7 @@ public class DBWriteService {
                     ).replaceWithVoid();
 
             default -> {
-                log.warnf("Unknown eventType: '%s' for user: %s — skipping",
+                LoggingUtil.logWarn(log, "processSingleWrite", "Unknown eventType: '%s' for user: %s — skipping",
                         request.getEventType(), request.getUserName());
                 yield Uni.createFrom().voidItem();
             }
@@ -163,7 +166,7 @@ public class DBWriteService {
                     );
 
             default -> {
-                log.warnf("Unknown eventType: '%s' for user: %s — skipping",
+                LoggingUtil.logWarn(log, "processSingleWriteWithCount", "Unknown eventType: '%s' for user: %s — skipping",
                         request.getEventType(), request.getUserName());
                 yield Uni.createFrom().item(0);
             }
@@ -175,13 +178,14 @@ public class DBWriteService {
             return Uni.createFrom().voidItem();
         }
 
-        log.infof("Processing %d related writes for user=%s",
+        LoggingUtil.logDebug(log, "processRelatedWrites", "Processing %d related writes for user=%s",
                 request.getRelatedWrites().size(), request.getUserName());
 
         Uni<Void> chain = Uni.createFrom().voidItem();
         for (DBWriteRequest related : request.getRelatedWrites()) {
             chain = chain.chain(() -> {
-                log.infof("Processing related write: eventType=%s, table=%s, user=%s",
+                LoggingUtil.logDebug(log, "processRelatedWrites",
+                        "Processing related write: eventType=%s, table=%s, user=%s",
                         related.getEventType(), related.getTableName(), related.getUserName());
                 return processSingleWrite(related);
             });
@@ -194,13 +198,14 @@ public class DBWriteService {
             return Uni.createFrom().voidItem();
         }
 
-        log.infof("Processing %d related writes for user=%s",
+        LoggingUtil.logDebug(log, "processRelatedWrites", "Processing %d related writes for user=%s",
                 request.getRelatedWrites().size(), request.getUserName());
 
         Uni<Void> chain = Uni.createFrom().voidItem();
         for (DBWriteRequest related : request.getRelatedWrites()) {
             chain = chain.chain(() -> {
-                log.infof("Processing related write: eventType=%s, table=%s, user=%s",
+                LoggingUtil.logDebug(log, "processRelatedWrites",
+                        "Processing related write: eventType=%s, table=%s, user=%s",
                         related.getEventType(), related.getTableName(), related.getUserName());
                 return processSingleWrite(conn, related);
             });

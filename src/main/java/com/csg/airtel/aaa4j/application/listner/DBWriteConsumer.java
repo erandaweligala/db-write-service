@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.application.listner;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.service.DBWriteService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -60,10 +61,10 @@ public class DBWriteConsumer {
                 .onItem().invoke(() -> {
                     int count = processedCounter.incrementAndGet();
                     if (count % 100 == 0) {
-                        log.infof("[%s] Processed %d DC-DR messages", site, count);
+                        LoggingUtil.logDebug(log, "consumeAccountingEvent", "[%s] Processed %d DC-DR messages", site, count);
                     }
                 })
-                .onFailure().invoke(throwable -> log.errorf(throwable,
+                .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeAccountingEvent", throwable,
                         "[%s] Error processing DC-DR event for user: %s | eventType: %s (already acked)",
                         site, request.getUserName(), request.getEventType()))
                 .onItem().transformToUni(result -> Uni.createFrom().voidItem())
@@ -92,10 +93,10 @@ public class DBWriteConsumer {
                 .onItem().invoke(() -> {
                     int count = processedCounter.incrementAndGet();
                     if (count % 100 == 0) {
-                        log.infof("[%s] Processed %d DR-DC messages", site, count);
+                        LoggingUtil.logDebug(log, "consumeReverseAccountingEvent", "[%s] Processed %d DR-DC messages", site, count);
                     }
                 })
-                .onFailure().invoke(throwable -> log.errorf(throwable,
+                .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeReverseAccountingEvent", throwable,
                         "[%s] Error processing DR-DC event for user: %s | eventType: %s (already acked)",
                         site, request.getUserName(), request.getEventType()))
                 .onItem().transformToUni(result -> Uni.createFrom().voidItem())
@@ -131,7 +132,7 @@ public class DBWriteConsumer {
     // =========================================================================
 
     private Uni<Void> handleProvisioningMessage(Message<String> message, String channelName) throws Exception {
-        log.infof("[%s] %s payload = %s", site, channelName, message.getPayload());
+        LoggingUtil.logDebug(log, "handleProvisioningMessage", "[%s] %s payload = %s", site, channelName, message.getPayload());
 
         ObjectMapper mapper = new ObjectMapper();
         DBWriteRequest request = mapper.readValue(message.getPayload(), DBWriteRequest.class);
@@ -139,21 +140,25 @@ public class DBWriteConsumer {
         IncomingKafkaRecordMetadata<?, ?> metadata =
                 message.getMetadata(IncomingKafkaRecordMetadata.class).get();
 
-        metadata.getHeaders().forEach(h ->
-                log.infof("[%s] %s Header: %s = %s", site, channelName,
-                        h.key(), new String(h.value(), StandardCharsets.UTF_8))
-        );
+        if (log.isDebugEnabled()) {
+            metadata.getHeaders().forEach(h ->
+                    LoggingUtil.logDebug(log, "handleProvisioningMessage", "[%s] %s Header: %s = %s", site, channelName,
+                            h.key(), new String(h.value(), StandardCharsets.UTF_8))
+            );
+        }
 
         var correlationHeader = metadata.getHeaders().lastHeader("kafka_correlationId");
         var replyTopicHeader  = metadata.getHeaders().lastHeader("kafka_replyTopic");
 
         if (correlationHeader == null || replyTopicHeader == null) {
-            log.warnf("[%s] %s Missing reply headers — processing without reply for user: %s",
+            LoggingUtil.logWarn(log, "handleProvisioningMessage",
+                    "[%s] %s Missing reply headers — processing without reply for user: %s",
                     site, channelName, request.getUserName());
             return dbWriteService.processEvent(request)
                     .onItem().transformToUni(v -> Uni.createFrom().completionStage(message.ack()))
                     .onFailure().recoverWithUni(t -> {
-                        log.errorf(t, "[%s] %s Error processing event (no reply headers) for user: %s | eventType: %s",
+                        LoggingUtil.logError(log, "handleProvisioningMessage", (Throwable) t,
+                                "[%s] %s Error processing event (no reply headers) for user: %s | eventType: %s",
                                 site, channelName, request.getUserName(), request.getEventType());
                         return Uni.createFrom().completionStage(message.ack());
                     });
@@ -161,12 +166,13 @@ public class DBWriteConsumer {
 
         byte[] correlationId = correlationHeader.value();
         String replyTopic    = new String(replyTopicHeader.value(), StandardCharsets.UTF_8);
-        log.infof("[%s] %s Reply topic: %s", site, channelName, replyTopic);
+        LoggingUtil.logDebug(log, "handleProvisioningMessage", "[%s] %s Reply topic: %s", site, channelName, replyTopic);
 
         return dbWriteService.processEvent(request)
                 .onItem().invoke(() -> {
                     int count = processedCounter.incrementAndGet();
-                    if (count % 100 == 0) log.infof("[%s] Processed %d %s messages", site, count, channelName);
+                    if (count % 100 == 0) LoggingUtil.logDebug(log, "handleProvisioningMessage",
+                            "[%s] Processed %d %s messages", site, count, channelName);
                 })
                 .onItem().transformToUni(v ->
                         Uni.createFrom().completionStage(message.ack())
@@ -174,7 +180,8 @@ public class DBWriteConsumer {
                                         sendReply(replyTopic, correlationId, "SUCCESS"))
                 )
                 .onFailure().recoverWithUni(throwable -> {
-                    log.errorf(throwable, "[%s] %s Error processing event for user: %s | eventType: %s",
+                    LoggingUtil.logError(log, "handleProvisioningMessage", throwable,
+                            "[%s] %s Error processing event for user: %s | eventType: %s",
                             site, channelName, request.getUserName(), request.getEventType());
                     return Uni.createFrom().completionStage(message.ack())
                             .onItem().transformToUni(ignored ->

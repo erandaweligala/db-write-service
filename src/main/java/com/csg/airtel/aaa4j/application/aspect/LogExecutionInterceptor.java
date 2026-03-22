@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.application.aspect;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import jakarta.interceptor.AroundInvoke;
 import jakarta.interceptor.Interceptor;
 import jakarta.interceptor.InvocationContext;
@@ -40,26 +41,25 @@ public class LogExecutionInterceptor {
         String startTimeStr = ZonedDateTime.now().format(TIME_FORMATTER);
 
         // IN log
-        if(log.isDebugEnabled()) {
-            log.debugf("[%s][%s][%s][%s][user=%s][session=%s] Invoke method args=%s",
-                    startTimeStr, traceId, className, methodName, userName, sessionId, Arrays.toString(params));
-        }
+        LoggingUtil.logDebug(log, methodName, "[%s][%s][%s][user=%s][session=%s] Invoke method args=%s",
+                startTimeStr, traceId, className, userName, sessionId, Arrays.toString(params));
         try {
             Object result = ctx.proceed();
             long durationMs = (System.nanoTime() - startTime) / 1_000_000;
             String endTimeStr = ZonedDateTime.now().format(TIME_FORMATTER);
 
             // OUT log
-            log.debugf("[%s][%s][%s][%s][user=%s][session=%s] Completed result=%s [%d ms]",
-                    endTimeStr, traceId, className, methodName, userName, sessionId, result, durationMs);
+            LoggingUtil.logDebug(log, methodName, "[%s][%s][%s][user=%s][session=%s] Completed result=%s [%d ms]",
+                    endTimeStr, traceId, className, userName, sessionId, result, durationMs);
 
             return result;
         } catch (Exception e) {
             long durationMs = (System.nanoTime() - startTime) / 1_000_000;
             String errorTimeStr = ZonedDateTime.now().format(TIME_FORMATTER);
 
-            log.errorf(e, "[%s][%s][%s][%s][user=%s][session=%s] ERROR after %d ms: %s",
-                    errorTimeStr, traceId, className, methodName, userName, sessionId, durationMs, e.getMessage());
+            LoggingUtil.logError(log, methodName, e,
+                    "[%s][%s][%s][user=%s][session=%s] ERROR after %d ms: %s",
+                    errorTimeStr, traceId, className, userName, sessionId, durationMs, e.getMessage());
             throw e;
         }
     }

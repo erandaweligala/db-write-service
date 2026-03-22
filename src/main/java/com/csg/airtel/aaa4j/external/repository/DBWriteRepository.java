@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.external.repository;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.infrastructure.DatabaseCircuitBreaker;
 import com.csg.airtel.aaa4j.infrastructure.PerformanceMetrics;
 import io.smallrye.mutiny.Uni;
@@ -55,13 +56,13 @@ public class DBWriteRepository {
                                Map<String, Object> whereConditions) {
 
         if (!circuitBreaker.allowRequest()) {
-            log.warn("Circuit breaker is OPEN, rejecting database update request");
+            LoggingUtil.logWarn(log, "update", "Circuit breaker is OPEN, rejecting database update request");
             metrics.recordDbUpdateFailure();
             return Uni.createFrom().failure(new RuntimeException("Circuit breaker is OPEN"));
         }
 
         if (whereConditions == null || whereConditions.isEmpty()) {
-            log.warn("Update operation rejected: WHERE conditions are required");
+            LoggingUtil.logWarn(log, "update", "Update operation rejected: WHERE conditions are required");
             metrics.recordDbUpdateFailure();
             return Uni.createFrom().failure(new IllegalArgumentException("WHERE conditions required"));
         }
@@ -86,7 +87,7 @@ public class DBWriteRepository {
                 .onFailure().invoke(throwable -> {
                     metrics.recordDbUpdateFailure();
                     circuitBreaker.recordFailure();
-                    log.errorf(throwable, "Update failed: %s", tableName);
+                    LoggingUtil.logError(log, "update", throwable, "Update failed: %s", tableName);
                 });
     }
 
@@ -130,7 +131,7 @@ public class DBWriteRepository {
         return sqlClient.preparedQuery(sqlStr)
                 .execute(Tuple.from(values))
                 .map(SqlResult::rowCount)
-                .onFailure().invoke(t -> log.errorf(t, "Update query failed on table: %s", tableName));
+                .onFailure().invoke(t -> LoggingUtil.logError(log, "executeUpdate", t, "Update query failed on table: %s", tableName));
     }
 
 
@@ -145,13 +146,13 @@ public class DBWriteRepository {
 
 
         if (!circuitBreaker.allowRequest()) {
-            log.warn("Circuit breaker is OPEN, rejecting database insert request");
+            LoggingUtil.logWarn(log, "executeInsert", "Circuit breaker is OPEN, rejecting database insert request");
             metrics.recordDbUpdateFailure();
             return Uni.createFrom().failure(new RuntimeException("Circuit breaker is OPEN"));
         }
 
         if (columnValues == null || columnValues.isEmpty()) {
-            log.warn("Insert operation rejected: column values are required");
+            LoggingUtil.logWarn(log, "executeInsert", "Insert operation rejected: column values are required");
             return Uni.createFrom().failure(new IllegalArgumentException("Column values required"));
         }
 
@@ -190,7 +191,7 @@ public class DBWriteRepository {
                 .map(SqlResult::rowCount)
                 .onFailure(DBWriteRepository::isUniqueConstraintViolation)
                 .recoverWithItem(throwable -> {
-                    log.warnf("Duplicate record skipped for table=%s (unique constraint): %s",
+                    LoggingUtil.logDebug(log, "executeInsert", "Duplicate record skipped for table=%s (unique constraint): %s",
                             tableName, throwable.getMessage());
                     return 0;
                 })
@@ -207,7 +208,7 @@ public class DBWriteRepository {
                     // Only non-duplicate failures reach here
                     metrics.recordDbUpdateFailure();
                     circuitBreaker.recordFailure();
-                    log.errorf(throwable, "Insert failed on table: %s", tableName);
+                    LoggingUtil.logError(log, "executeInsert", throwable, "Insert failed on table: %s", tableName);
                 });
     }
 
@@ -222,13 +223,13 @@ public class DBWriteRepository {
                                       Map<String, Object> whereConditions) {
 
         if (!circuitBreaker.allowRequest()) {
-            log.warn("Circuit breaker is OPEN, rejecting database delete request");
+            LoggingUtil.logWarn(log, "executeDelete", "Circuit breaker is OPEN, rejecting database delete request");
             metrics.recordDbUpdateFailure();
             return Uni.createFrom().failure(new RuntimeException("Circuit breaker is OPEN"));
         }
 
         if (whereConditions == null || whereConditions.isEmpty()) {
-            log.warn("Delete operation rejected: WHERE conditions are required");
+            LoggingUtil.logWarn(log, "executeDelete", "Delete operation rejected: WHERE conditions are required");
             return Uni.createFrom().failure(new IllegalArgumentException("WHERE conditions required for DELETE"));
         }
 
@@ -270,7 +271,7 @@ public class DBWriteRepository {
                 .onFailure().invoke(throwable -> {
                     metrics.recordDbUpdateFailure();
                     circuitBreaker.recordFailure();
-                    log.errorf(throwable, "Delete failed on table: %s", tableName);
+                    LoggingUtil.logError(log, "executeDelete", throwable, "Delete failed on table: %s", tableName);
                 });
     }
 

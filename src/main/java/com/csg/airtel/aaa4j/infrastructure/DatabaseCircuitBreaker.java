@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.infrastructure;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.jboss.logging.Logger;
 
@@ -40,7 +41,7 @@ public class DatabaseCircuitBreaker {
             case OPEN:
                 // Check if timeout has elapsed
                 if (Duration.between(lastOpenTime.get(), Instant.now()).compareTo(TIMEOUT) > 0) {
-                    log.info("Circuit breaker transitioning from OPEN to HALF_OPEN");
+                    LoggingUtil.logInfo(log, "allowRequest", "Circuit breaker transitioning from OPEN to HALF_OPEN");
                     state.set(CircuitState.HALF_OPEN);
                     successCount.set(0);
                     return true;
@@ -64,7 +65,7 @@ public class DatabaseCircuitBreaker {
         if (currentState == CircuitState.HALF_OPEN) {
             int successes = successCount.incrementAndGet();
             if (successes >= SUCCESS_THRESHOLD) {
-                log.info("Circuit breaker transitioning from HALF_OPEN to CLOSED");
+                LoggingUtil.logInfo(log, "recordSuccess", "Circuit breaker transitioning from HALF_OPEN to CLOSED");
                 state.set(CircuitState.CLOSED);
                 failureCount.set(0);
                 successCount.set(0);
@@ -82,14 +83,14 @@ public class DatabaseCircuitBreaker {
         CircuitState currentState = state.get();
 
         if (currentState == CircuitState.HALF_OPEN) {
-            log.warn("Circuit breaker transitioning from HALF_OPEN to OPEN due to failure");
+            LoggingUtil.logWarn(log, "recordFailure", "Circuit breaker transitioning from HALF_OPEN to OPEN due to failure");
             state.set(CircuitState.OPEN);
             lastOpenTime.set(Instant.now());
             successCount.set(0);
         } else if (currentState == CircuitState.CLOSED) {
             int failures = failureCount.incrementAndGet();
             if (failures >= FAILURE_THRESHOLD) {
-                log.errorf("Circuit breaker OPENING after %d failures", failures);
+                LoggingUtil.logError(log, "recordFailure", null, "Circuit breaker OPENING after %d failures", failures);
                 state.set(CircuitState.OPEN);
                 lastOpenTime.set(Instant.now());
             }
@@ -114,7 +115,7 @@ public class DatabaseCircuitBreaker {
      * Manually reset the circuit breaker
      */
     public void reset() {
-        log.info("Circuit breaker manually reset to CLOSED");
+        LoggingUtil.logInfo(log, "reset", "Circuit breaker manually reset to CLOSED");
         state.set(CircuitState.CLOSED);
         failureCount.set(0);
         successCount.set(0);

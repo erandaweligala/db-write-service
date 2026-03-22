@@ -6,6 +6,7 @@ import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.Row;
 import io.vertx.mutiny.sqlclient.RowSet;
 import io.vertx.mutiny.sqlclient.Tuple;
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
@@ -92,18 +93,18 @@ public class CsvExportUtil {
                 outputPath = tempDir.resolve(fileName);
             }
         } catch (IOException e) {
-            log.errorf(e, "Failed to create output directory");
+            LoggingUtil.logError(log, "exportToCsv", e, "Failed to create output directory");
             return Uni.createFrom().failure(e);
         }
 
-        log.infof("Starting CSV export: table=%s, output=%s", tableName, outputPath);
+        LoggingUtil.logInfo(log, "exportToCsv", "Starting CSV export: table=%s, output=%s", tableName, outputPath);
 
         AtomicInteger exportedCount = new AtomicInteger(0);
         long startTime = System.currentTimeMillis();
 
         return getRecordCount(tableName)
                 .chain(totalRecords -> {
-                    log.infof("Total records to export: %d", totalRecords);
+                    LoggingUtil.logInfo(log, "exportToCsv", "Total records to export: %d", totalRecords);
 
                     return exportRecordsInBatches(tableName, outputPath, totalRecords, exportedCount, startTime)
                             .map(count -> {
@@ -117,7 +118,7 @@ public class CsvExportUtil {
                                         recordsPerSecond
                                 );
 
-                                log.infof("CSV export completed: %s", result);
+                                LoggingUtil.logInfo(log, "exportToCsv", "CSV export completed: %s", result);
                                 return result;
                             });
                 });
@@ -146,7 +147,7 @@ public class CsvExportUtil {
                                         List<String> arrays = new ArrayList<>();
                                         for (Row row : rows) {
                                             String csvLine = rowToCsvLine(row);
-                                                log.infof("user name %s" ,getString(row, "USER_NAME"));
+                                                LoggingUtil.logDebug(log, "exportRecordsInBatches", "user name %s", getString(row, "USER_NAME"));
                                                 arrays.add(getString(row, "USER_NAME"));
                                                 writer.write(csvLine);
                                                 writer.newLine();
@@ -157,11 +158,12 @@ public class CsvExportUtil {
                                                 long elapsed = System.currentTimeMillis() - startTime;
                                                 double rps = count * 1000.0 / elapsed;
                                                 double percent = (count * 100.0) / totalRecords;
-                                                log.infof("Export progress: %d/%d (%.1f%%) | %.0f rec/s",
+                                                LoggingUtil.logDebug(log, "exportRecordsInBatches",
+                                                        "Export progress: %d/%d (%.1f%%) | %.0f rec/s",
                                                         count, totalRecords, percent, rps);
                                             }
                                         }
-                                        log.infof(" set update ");
+                                        LoggingUtil.logDebug(log, "exportRecordsInBatches", "set update");
                                         writer.flush();
                                     } catch (IOException e) {
                                         throw new RuntimeException("Failed to write to CSV", e);
@@ -173,7 +175,7 @@ public class CsvExportUtil {
                         try {
                             writer.close();
                         } catch (IOException e) {
-                            log.warnf("Failed to close writer: %s", e.getMessage());
+                            LoggingUtil.logWarn(log, "exportRecordsInBatches", "Failed to close writer: %s", e.getMessage());
                         }
                         return exportedCount.get();
                     })
@@ -181,11 +183,11 @@ public class CsvExportUtil {
                         try {
                             writer.close();
                         } catch (IOException ex) {
-                            log.warnf("Failed to close writer on failure: %s", ex.getMessage());
+                            LoggingUtil.logWarn(log, "exportRecordsInBatches", "Failed to close writer on failure: %s", ex.getMessage());
                         }
                     });
         } catch (IOException e) {
-            log.errorf(e, "Failed to create CSV writer");
+            LoggingUtil.logError(log, "exportRecordsInBatches", e, "Failed to create CSV writer");
             return Uni.createFrom().failure(e);
         }
     }
@@ -268,7 +270,7 @@ public class CsvExportUtil {
 //    }
     public Uni<Integer> updatePassword(List<String> ids) {
 
-        log.infof("Updating password for %d users", ids.size());
+        LoggingUtil.logDebug(log, "updatePassword", "Updating password for %d users", ids.size());
 
         // Join with AAA_USER_MAC_ADDRESS table to get ORIGINAL_MAC_ADDRESS
         // Using MERGE statement to update based on join
