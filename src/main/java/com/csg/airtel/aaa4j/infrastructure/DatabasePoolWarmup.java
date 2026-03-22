@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.infrastructure;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
 import jakarta.annotation.PostConstruct;
@@ -30,7 +31,7 @@ public class DatabasePoolWarmup {
     }
     @PostConstruct
     void onStart() {
-        log.info("Starting database connection pool warm-up...");
+        LoggingUtil.logInfo(log, "onStart", "Starting database connection pool warm-up...");
         long startTime = System.currentTimeMillis();
 
         // Execute warmup queries in parallel
@@ -41,7 +42,7 @@ public class DatabasePoolWarmup {
                     .execute()
                     .replaceWithVoid()
                     .onFailure().invoke(throwable ->
-                            log.warnf("Warmup query failed: %s", throwable.getMessage()));
+                            LoggingUtil.logWarn(log, "onStart", "Warmup query failed: %s", throwable.getMessage()));
             warmupQueries.add(warmupQuery);
         }
 
@@ -52,12 +53,14 @@ public class DatabasePoolWarmup {
                 .with(
                         success -> {
                             long duration = System.currentTimeMillis() - startTime;
-                            log.infof("Database pool warm-up completed successfully in %d ms. " +
-                                    "Pre-created %d connections.", duration, WARMUP_CONNECTIONS);
+                            LoggingUtil.logInfo(log, "onStart",
+                                    "Database pool warm-up completed successfully in %d ms. Pre-created %d connections.",
+                                    duration, WARMUP_CONNECTIONS);
                         },
                         failure -> {
                             long duration = System.currentTimeMillis() - startTime;
-                            log.errorf(failure, "Database pool warm-up encountered errors after %d ms", duration);
+                            LoggingUtil.logError(log, "onStart", failure,
+                                    "Database pool warm-up encountered errors after %d ms", duration);
                         }
                 );
     }

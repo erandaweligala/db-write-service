@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.application.config;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import io.quarkus.reactive.oracle.client.OraclePoolCreator;
 import io.vertx.oracleclient.OracleBuilder;
 import io.vertx.oracleclient.OracleConnectOptions;
@@ -58,8 +59,9 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
         // Apply prepared statement cache size
         connectOptions.setPreparedStatementCacheMaxSize(poolConfig.preparedStatementCacheMaxSize());
 
-        log.infof("Oracle pool '%s' configured: maxSize=%d, connectionTimeout=%dms, idleTimeout=%dms, " +
-                        "maxLifetime=%dms, eventLoopSize=%d, pipelining=%s, tcpKeepAlive=%s, tcpNoDelay=%s",
+        LoggingUtil.logInfo(log, "create",
+                "Oracle pool '%s' configured: maxSize=%d, connectionTimeout=%dms, idleTimeout=%dms, " +
+                "maxLifetime=%dms, eventLoopSize=%d, pipelining=%s, tcpKeepAlive=%s, tcpNoDelay=%s",
                 poolOptions.getName(),
                 poolConfig.maxSize(),
                 poolConfig.connectionTimeout(),

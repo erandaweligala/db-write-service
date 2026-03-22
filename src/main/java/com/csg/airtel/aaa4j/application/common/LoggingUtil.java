@@ -29,8 +29,9 @@ public class LoggingUtil {
     /**
      * Log WARN level message with structured format
      */
-    public static void logWarn(Logger logger,String method, String message, Object... args) {
-        logger.warn(buildMessage( method, message, args));
+    public static void logWarn(Logger logger, String method, String message, Object... args) {
+        if (!logger.isWarnEnabled()) return;
+        logger.warn(buildMessage(method, message, args));
     }
 
     /**
@@ -48,9 +49,9 @@ public class LoggingUtil {
     /**
      * Log TRACE level message with structured format
      */
-    public static void logTrace(Logger logger, String className, String method, String message, Object... args) {
+    public static void logTrace(Logger logger, String method, String message, Object... args) {
         if (!logger.isTraceEnabled()) return;
-        logger.trace(buildMessage(className, method, message, args));
+        logger.trace(buildMessage(method, message, args));
     }
 
     /**
