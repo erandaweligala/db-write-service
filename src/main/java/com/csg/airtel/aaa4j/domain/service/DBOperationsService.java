@@ -15,7 +15,7 @@ import java.util.Map;
 @ApplicationScoped
 public class DBOperationsService {
 
-    private static final Logger log = Logger.getLogger(DBWriteRepository.class);
+    private static final Logger log = Logger.getLogger(DBOperationsService.class);
 
     final DatabaseCircuitBreaker circuitBreaker;
     final PerformanceMetrics metrics;

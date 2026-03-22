@@ -2,21 +2,32 @@
 quarkus:
   http:
     port: 8085
-
   # =========================
   # ORACLE DATASOURCE (LOCAL)
   # =========================
   datasource:
     db-kind: oracle
-    username: aaa_app
-    password: password123
-
+    username: aaa
+    password: Aaa!89nky78D
     reactive:
-      url: oracle:thin:@localhost:1521/XEPDB1
+      url: oracle:thin:@localhost:1524/ORCL
 
-    jdbc:
-      url: oracle:thin:@localhost:1521/XEPDB1
-      driver: oracle.jdbc.OracleDriver
+  vertx:
+    # High-TPS optimization: Match event loops to CPU cores for optimal performance
+    event-loops-pool-size: 2
+    internal-blocking-pool-size: 32
+    warning-exception-time: 10s
+    max-event-loop-execute-time: 5s
+    max-worker-execute-time: 60s
+    prefer-native-transport: true
+    caching: false
+
+  thread-pool:
+    core-threads: 16
+    max-threads: 48
+    queue-size: 250
+    growth-resistance: 0
+    shutdown-timeout: 30s
 
   # =========================
   # LOGGING
@@ -27,28 +38,38 @@ quarkus:
   log:
     level: INFO
 
-    file:
-      path: logs/db-write.log
-      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
-      rotation:
-        max-file-size: 50M
-        max-backup-index: 5
-        rotate-on-boot: true
-
     console:
-      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+      format: "[%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}] %-5p [%c][%t][%X{traceId}][%X{userName}][%X{sessionId}] %s%e%n"
+      async:
+        queue-length: 8192
+        overflow: discard
+      enabled: true
+
+    file:
+      enabled: true
+      level: INFO
+      path: "/var/log/dte/${HOSTNAME:unknown}.log"
+      format: "[%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}] %-5p [%c][%t][%X{traceId}][%X{userName}][%X{sessionId}] %s%e%n"
+      async:
+        enable: true
+        queue-length: 20000
+        overflow: discard
+      rotation:
+        max-file-size: 60M
+        max-backup-index: 10
+        rotate-on-boot: true
 
     category:
       "org.apache.kafka":
-        level: WARN
+        level: ERROR
       "io.smallrye.reactive.messaging.kafka":
-        level: INFO
+        level: ERROR
       "io.quarkus.config":
-        level: INFO
+        level: ERROR
       "io.smallrye.config":
-        level: INFO
+        level: ERROR
       "com.csg.airtel.aaa4j":
-        level: DEBUG
+        level: INFO
 
   # =========================
   # REDIS (LOCAL – NO SENTINEL)
@@ -78,33 +99,19 @@ pool:
   pool-cleaner-interval: 60000
 
 
-# =========================
-# SITE IDENTITY
-# =========================
-# Set to DC or DR depending on which site this instance runs on.
-# Override per-environment via QUARKUS_PROFILE or app.site env variable.
 app:
   site: DC
 
 kafka:
   bootstrap:
     servers: localhost:9092
-
 mp:
   messaging:
-
     incoming:
-      # ------------------------------------------------
-      # DC→DR accounting channel
-      # Events published by DC-side services (Auth, Accounting, CDR, etc.)
-      # Mirrored to DR Kafka cluster via cross-site replication.
-      # Both DC and DR DB Write Services consume this topic.
-      # ------------------------------------------------
       db-write-events:
         connector: smallrye-kafka
-        topic: DC-DR
+        topic: accounting-db-dc
         group.id: accounting-dc-group
-        bootstrap.servers: localhost:9092
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
@@ -115,17 +122,10 @@ mp:
         heartbeat.interval.ms: 10000
         failure-strategy: ignore
 
-      # ------------------------------------------------
-      # DR→DC accounting channel (reverse direction)
-      # Events published by DR-side services when DR is active.
-      # Mirrored to DC Kafka cluster via cross-site replication.
-      # Both DC and DR DB Write Services consume this topic.
-      # ------------------------------------------------
       db-write-events-reverse:
         connector: smallrye-kafka
-        topic: DR-DC
+        topic: dr.accounting-db-dc
         group.id: accounting-dr-group
-        bootstrap.servers: localhost:9092
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest

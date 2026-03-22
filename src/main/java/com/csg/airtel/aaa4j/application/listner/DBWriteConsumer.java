@@ -45,7 +45,7 @@ public class DBWriteConsumer {
     // =========================================================================
 
     @Incoming("db-write-events")
-    @Acknowledgment(Acknowledgment.Strategy.MANUAL)
+    @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeAccountingEvent(Message<DBWriteRequest> message) {
         DBWriteRequest request = message.getPayload();
 
@@ -77,7 +77,7 @@ public class DBWriteConsumer {
     // =========================================================================
 
     @Incoming("db-write-events-reverse")
-    @Acknowledgment(Acknowledgment.Strategy.MANUAL)
+    @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeReverseAccountingEvent(Message<DBWriteRequest> message) {
         DBWriteRequest request = message.getPayload();
 

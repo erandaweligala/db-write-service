@@ -18,7 +18,7 @@ public class DBWriteService {
     final DBWriteRepository dbWriteRepository;
     final DBOperationsService dbOperationsService;
     final Pool pool;
-//test commit
+
     @Inject
     public DBWriteService(DBWriteRepository dbWriteRepository, DBOperationsService dbOperationsService, Pool pool) {
         this.dbWriteRepository = dbWriteRepository;
@@ -55,8 +55,17 @@ public class DBWriteService {
 
         if (hasRelatedWrites) {
             return pool.withTransaction(conn ->
-                    processSingleWrite(conn, request)
-                            .chain(() -> processRelatedWrites(conn, request))
+                    processSingleWriteWithCount(conn, request)
+                            .chain(rowCount -> {
+                                if (rowCount > 0) {
+                                    return processRelatedWrites(conn, request);
+                                } else {
+                                    log.infof("Parent insert was duplicate (0 rows affected), " +
+                                                    "skipping related writes for user=%s, table=%s",
+                                            request.getUserName(), request.getTableName());
+                                    return Uni.createFrom().voidItem();
+                                }
+                            })
             );
         }
 
@@ -71,7 +80,7 @@ public class DBWriteService {
                             request.getColumnValues()
                     ).replaceWithVoid();
 
-            case "UPDATE", "BULK_UPDATE" ->
+            case "UPDATE", "BULK_UPDATE","UPDATE_EVENT" ->
                     dbWriteRepository.update(
                             request.getTableName(),
                             request.getColumnValues(),
@@ -124,6 +133,43 @@ public class DBWriteService {
         };
     }
 
+    /**
+     * Same as processSingleWrite(SqlClient, DBWriteRequest) but preserves the
+     * row count so the caller can decide whether to proceed with related writes.
+     * A return value of 0 means the row was a duplicate and was skipped.
+     */
+    private Uni<Integer> processSingleWriteWithCount(SqlClient conn, DBWriteRequest request) {
+        return switch (request.getEventType().toUpperCase()) {
+            case "CREATE", "BULK_CREATE" ->
+                    dbWriteRepository.executeInsert(
+                            conn,
+                            request.getTableName(),
+                            request.getColumnValues()
+                    );
+
+            case "UPDATE", "BULK_UPDATE" ->
+                    dbWriteRepository.update(
+                            conn,
+                            request.getTableName(),
+                            request.getColumnValues(),
+                            request.getWhereConditions()
+                    );
+
+            case "DELETE" ->
+                    dbWriteRepository.executeDelete(
+                            conn,
+                            request.getTableName(),
+                            request.getWhereConditions()
+                    );
+
+            default -> {
+                log.warnf("Unknown eventType: '%s' for user: %s — skipping",
+                        request.getEventType(), request.getUserName());
+                yield Uni.createFrom().item(0);
+            }
+        };
+    }
+
     private Uni<Void> processRelatedWrites(DBWriteRequest request) {
         if (request.getRelatedWrites() == null || request.getRelatedWrites().isEmpty()) {
             return Uni.createFrom().voidItem();
@@ -132,7 +178,6 @@ public class DBWriteService {
         log.infof("Processing %d related writes for user=%s",
                 request.getRelatedWrites().size(), request.getUserName());
 
-        // Chain each related write sequentially — order matters (e.g. DELETE mac then INSERT mac)
         Uni<Void> chain = Uni.createFrom().voidItem();
         for (DBWriteRequest related : request.getRelatedWrites()) {
             chain = chain.chain(() -> {
@@ -152,7 +197,6 @@ public class DBWriteService {
         log.infof("Processing %d related writes for user=%s",
                 request.getRelatedWrites().size(), request.getUserName());
 
-        // Chain each related write sequentially within the same transaction connection
         Uni<Void> chain = Uni.createFrom().voidItem();
         for (DBWriteRequest related : request.getRelatedWrites()) {
             chain = chain.chain(() -> {
@@ -163,6 +207,4 @@ public class DBWriteService {
         }
         return chain;
     }
-
-
 }

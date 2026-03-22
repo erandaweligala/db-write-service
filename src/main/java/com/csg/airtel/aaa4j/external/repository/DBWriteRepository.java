@@ -133,9 +133,6 @@ public class DBWriteRepository {
                 .onFailure().invoke(t -> log.errorf(t, "Update query failed on table: %s", tableName));
     }
 
-    // -----------------------------------------------------------------------
-    // INSERT
-    // -----------------------------------------------------------------------
 
     public Uni<Integer> executeInsert(String tableName,
                                       Map<String, Object> columnValues) {
@@ -191,12 +188,6 @@ public class DBWriteRepository {
         return sqlClient.preparedQuery(sqlStr)
                 .execute(Tuple.from(values))
                 .map(SqlResult::rowCount)
-                // ---------------------------------------------------------------
-                // FIX: Idempotent insert — swallow unique constraint violations.
-                // The upstream producer can legitimately publish the same CREATE
-                // message more than once (at-least-once delivery guarantee).
-                // A duplicate row is not an error; treat it as a no-op (0 rows).
-                // ---------------------------------------------------------------
                 .onFailure(DBWriteRepository::isUniqueConstraintViolation)
                 .recoverWithItem(throwable -> {
                     log.warnf("Duplicate record skipped for table=%s (unique constraint): %s",
@@ -220,9 +211,6 @@ public class DBWriteRepository {
                 });
     }
 
-    // -----------------------------------------------------------------------
-    // DELETE
-    // -----------------------------------------------------------------------
 
     public Uni<Integer> executeDelete(String tableName,
                                       Map<String, Object> whereConditions) {
@@ -286,9 +274,6 @@ public class DBWriteRepository {
                 });
     }
 
-    // -----------------------------------------------------------------------
-    // Utility
-    // -----------------------------------------------------------------------
 
     /**
      * Returns true if the throwable represents an Oracle unique constraint
@@ -323,4 +308,3 @@ public class DBWriteRepository {
         return value;
     }
 }
-// commit test
