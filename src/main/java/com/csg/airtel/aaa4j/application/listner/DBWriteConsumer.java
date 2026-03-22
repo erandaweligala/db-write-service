@@ -10,7 +10,6 @@ import io.smallrye.reactive.messaging.kafka.api.IncomingKafkaRecordMetadata;
 import io.smallrye.reactive.messaging.kafka.api.OutgoingKafkaRecordMetadata;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import lombok.SneakyThrows;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.reactive.messaging.*;
@@ -29,6 +28,9 @@ public class DBWriteConsumer {
 
     @ConfigProperty(name = "app.site", defaultValue = "DC")
     String site;
+
+    @Inject
+    ObjectMapper objectMapper;
 
     @Inject
     @Channel("responses-out")
@@ -56,8 +58,7 @@ public class DBWriteConsumer {
                             site, metadata.getPartition(), metadata.getOffset(), metadata.getKey()));
         }
 
-        return Uni.createFrom().completionStage(message.ack())
-                .onItem().transformToUni(v -> dbWriteService.processDbWriteRequest(request))
+        return dbWriteService.processDbWriteRequest(request)
                 .onItem().invoke(() -> {
                     int count = processedCounter.incrementAndGet();
                     if (count % 100 == 0) {
@@ -65,7 +66,7 @@ public class DBWriteConsumer {
                     }
                 })
                 .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeAccountingEvent", throwable,
-                        "[%s] Error processing DC-DR event for user: %s | eventType: %s (already acked)",
+                        "[%s] Error processing DC-DR event for user: %s | eventType: %s",
                         site, request.getUserName(), request.getEventType()))
                 .onItem().transformToUni(result -> Uni.createFrom().voidItem())
                 .onFailure().recoverWithItem((Void) null);
@@ -88,8 +89,7 @@ public class DBWriteConsumer {
                             site, metadata.getPartition(), metadata.getOffset(), metadata.getKey()));
         }
 
-        return Uni.createFrom().completionStage(message.ack())
-                .onItem().transformToUni(v -> dbWriteService.processDbWriteRequest(request))
+        return dbWriteService.processDbWriteRequest(request)
                 .onItem().invoke(() -> {
                     int count = processedCounter.incrementAndGet();
                     if (count % 100 == 0) {
@@ -97,7 +97,7 @@ public class DBWriteConsumer {
                     }
                 })
                 .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeReverseAccountingEvent", throwable,
-                        "[%s] Error processing DR-DC event for user: %s | eventType: %s (already acked)",
+                        "[%s] Error processing DR-DC event for user: %s | eventType: %s",
                         site, request.getUserName(), request.getEventType()))
                 .onItem().transformToUni(result -> Uni.createFrom().voidItem())
                 .onFailure().recoverWithItem((Void) null);
@@ -109,8 +109,7 @@ public class DBWriteConsumer {
     // =========================================================================
 
     @Incoming("db-write-events-dr")
-    @Acknowledgment(Acknowledgment.Strategy.MANUAL)
-    @SneakyThrows
+    @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeAndReplyDR(Message<String> message) {
         return handleProvisioningMessage(message, "dc-provisioning");
     }
@@ -121,8 +120,7 @@ public class DBWriteConsumer {
     // =========================================================================
 
     @Incoming("db-write-events-dc")
-    @Acknowledgment(Acknowledgment.Strategy.MANUAL)
-    @SneakyThrows
+    @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeAndReplyDC(Message<String> message) {
         return handleProvisioningMessage(message, "dr-provisioning");
     }
@@ -131,11 +129,17 @@ public class DBWriteConsumer {
     // Shared provisioning handler
     // =========================================================================
 
-    private Uni<Void> handleProvisioningMessage(Message<String> message, String channelName) throws Exception {
+    private Uni<Void> handleProvisioningMessage(Message<String> message, String channelName) {
         LoggingUtil.logDebug(log, "handleProvisioningMessage", "[%s] %s payload = %s", site, channelName, message.getPayload());
 
-        ObjectMapper mapper = new ObjectMapper();
-        DBWriteRequest request = mapper.readValue(message.getPayload(), DBWriteRequest.class);
+        DBWriteRequest request;
+        try {
+            request = objectMapper.readValue(message.getPayload(), DBWriteRequest.class);
+        } catch (Exception e) {
+            LoggingUtil.logError(log, "handleProvisioningMessage", e,
+                    "[%s] %s Failed to deserialize payload", site, channelName);
+            return Uni.createFrom().voidItem();
+        }
 
         IncomingKafkaRecordMetadata<?, ?> metadata =
                 message.getMetadata(IncomingKafkaRecordMetadata.class).get();
@@ -155,12 +159,11 @@ public class DBWriteConsumer {
                     "[%s] %s Missing reply headers — processing without reply for user: %s",
                     site, channelName, request.getUserName());
             return dbWriteService.processEvent(request)
-                    .onItem().transformToUni(v -> Uni.createFrom().completionStage(message.ack()))
                     .onFailure().recoverWithUni(t -> {
                         LoggingUtil.logError(log, "handleProvisioningMessage", (Throwable) t,
                                 "[%s] %s Error processing event (no reply headers) for user: %s | eventType: %s",
                                 site, channelName, request.getUserName(), request.getEventType());
-                        return Uni.createFrom().completionStage(message.ack());
+                        return Uni.createFrom().voidItem();
                     });
         }
 
@@ -168,25 +171,19 @@ public class DBWriteConsumer {
         String replyTopic    = new String(replyTopicHeader.value(), StandardCharsets.UTF_8);
         LoggingUtil.logDebug(log, "handleProvisioningMessage", "[%s] %s Reply topic: %s", site, channelName, replyTopic);
 
+        DBWriteRequest finalRequest = request;
         return dbWriteService.processEvent(request)
                 .onItem().invoke(() -> {
                     int count = processedCounter.incrementAndGet();
                     if (count % 100 == 0) LoggingUtil.logDebug(log, "handleProvisioningMessage",
                             "[%s] Processed %d %s messages", site, count, channelName);
                 })
-                .onItem().transformToUni(v ->
-                        Uni.createFrom().completionStage(message.ack())
-                                .onItem().transformToUni(ignored ->
-                                        sendReply(replyTopic, correlationId, "SUCCESS"))
-                )
+                .onItem().transformToUni(v -> sendReply(replyTopic, correlationId, "SUCCESS"))
                 .onFailure().recoverWithUni(throwable -> {
                     LoggingUtil.logError(log, "handleProvisioningMessage", throwable,
                             "[%s] %s Error processing event for user: %s | eventType: %s",
-                            site, channelName, request.getUserName(), request.getEventType());
-                    return Uni.createFrom().completionStage(message.ack())
-                            .onItem().transformToUni(ignored ->
-                                    sendReply(replyTopic, correlationId, "FAIL: " + throwable.getMessage())
-                            );
+                            site, channelName, finalRequest.getUserName(), finalRequest.getEventType());
+                    return sendReply(replyTopic, correlationId, "FAIL: " + throwable.getMessage());
                 });
     }
 
