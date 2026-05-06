@@ -75,6 +75,13 @@ pool:
 app:
   site: DC
 
+# DB-write retry policy applied before failed messages are routed to the DLQ
+db-write:
+  retry:
+    max-attempts: 3
+    initial-backoff-ms: 200
+    max-backoff-ms: 2000
+
 # Kafka Configuration
 
 kafka:
@@ -97,7 +104,8 @@ mp:
         max.poll.interval.ms: 10000
         session.timeout.ms: 10000
         heartbeat.interval.ms: 3000
-        failure-strategy: ignore
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: DC-DR.DLQ
 
       # DR→DC accounting channel (reverse direction)
       db-write-events-reverse:
@@ -112,7 +120,8 @@ mp:
         max.poll.interval.ms: 10000
         session.timeout.ms: 10000
         heartbeat.interval.ms: 3000
-        failure-strategy: ignore
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: DR-DC.DLQ
 
       # DC→DR provisioning channel (request-reply)
       db-write-events-dr:
@@ -127,7 +136,8 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        failure-strategy: ignore
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: dc-provisioning.DLQ
 
       # DR→DC provisioning channel (reverse request-reply)
       db-write-events-dc:
@@ -142,7 +152,8 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        failure-strategy: ignore
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: dr-provisioning.DLQ
 
     # Outgoing: provisioning reply channel (topic set dynamically per-message)
     outgoing:

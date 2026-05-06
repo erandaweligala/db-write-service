@@ -16,6 +16,7 @@ import org.eclipse.microprofile.reactive.messaging.*;
 import org.jboss.logging.Logger;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @ApplicationScoped
@@ -28,6 +29,15 @@ public class DBWriteConsumer {
 
     @ConfigProperty(name = "app.site", defaultValue = "DC")
     String site;
+
+    @ConfigProperty(name = "db-write.retry.max-attempts", defaultValue = "3")
+    int retryMaxAttempts;
+
+    @ConfigProperty(name = "db-write.retry.initial-backoff-ms", defaultValue = "200")
+    long retryInitialBackoffMs;
+
+    @ConfigProperty(name = "db-write.retry.max-backoff-ms", defaultValue = "2000")
+    long retryMaxBackoffMs;
 
     @Inject
     ObjectMapper objectMapper;
@@ -58,6 +68,12 @@ public class DBWriteConsumer {
         }
 
         return dbWriteService.processDbWriteRequest(request)
+                .onFailure().invoke(throwable -> LoggingUtil.logWarn(log, "consumeAccountingEvent",
+                        "[%s] DC-DR DB write failed, will retry (user=%s, eventType=%s): %s",
+                        site, request.getUserName(), request.getEventType(), throwable.getMessage()))
+                .onFailure().retry()
+                    .withBackOff(Duration.ofMillis(retryInitialBackoffMs), Duration.ofMillis(retryMaxBackoffMs))
+                    .atMost(retryMaxAttempts)
                 .onItem().invoke(() -> {
                     int count = processedCounter.incrementAndGet();
                     if (count % 100 == 0) {
@@ -65,10 +81,9 @@ public class DBWriteConsumer {
                     }
                 })
                 .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeAccountingEvent", throwable,
-                        "[%s] Error processing DC-DR event for user: %s | eventType: %s",
+                        "[%s] DC-DR retries exhausted, routing to DLQ for user: %s | eventType: %s",
                         site, request.getUserName(), request.getEventType()))
-                .onItem().transformToUni(result -> Uni.createFrom().voidItem())
-                .onFailure().recoverWithItem((Void) null);
+                .onItem().transformToUni(result -> Uni.createFrom().voidItem());
     }
 
     /**
@@ -88,6 +103,12 @@ public class DBWriteConsumer {
         }
 
         return dbWriteService.processDbWriteRequest(request)
+                .onFailure().invoke(throwable -> LoggingUtil.logWarn(log, "consumeReverseAccountingEvent",
+                        "[%s] DR-DC DB write failed, will retry (user=%s, eventType=%s): %s",
+                        site, request.getUserName(), request.getEventType(), throwable.getMessage()))
+                .onFailure().retry()
+                    .withBackOff(Duration.ofMillis(retryInitialBackoffMs), Duration.ofMillis(retryMaxBackoffMs))
+                    .atMost(retryMaxAttempts)
                 .onItem().invoke(() -> {
                     int count = processedCounter.incrementAndGet();
                     if (count % 100 == 0) {
@@ -95,10 +116,9 @@ public class DBWriteConsumer {
                     }
                 })
                 .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeReverseAccountingEvent", throwable,
-                        "[%s] Error processing DR-DC event for user: %s | eventType: %s",
+                        "[%s] DR-DC retries exhausted, routing to DLQ for user: %s | eventType: %s",
                         site, request.getUserName(), request.getEventType()))
-                .onItem().transformToUni(result -> Uni.createFrom().voidItem())
-                .onFailure().recoverWithItem((Void) null);
+                .onItem().transformToUni(result -> Uni.createFrom().voidItem());
     }
 
 
@@ -141,25 +161,31 @@ public class DBWriteConsumer {
         var correlationHeader = metadata.getHeaders().lastHeader("kafka_correlationId");
         var replyTopicHeader  = metadata.getHeaders().lastHeader("kafka_replyTopic");
 
+        DBWriteRequest finalRequest = request;
+        Uni<Void> processedWithRetry = dbWriteService.processEvent(request)
+                .onFailure().invoke(throwable -> LoggingUtil.logWarn(log, "handleProvisioningMessage",
+                        "[%s] %s DB write failed, will retry (user=%s, eventType=%s): %s",
+                        site, channelName, finalRequest.getUserName(), finalRequest.getEventType(),
+                        throwable.getMessage()))
+                .onFailure().retry()
+                    .withBackOff(Duration.ofMillis(retryInitialBackoffMs), Duration.ofMillis(retryMaxBackoffMs))
+                    .atMost(retryMaxAttempts);
+
         if (correlationHeader == null || replyTopicHeader == null) {
             LoggingUtil.logWarn(log, "handleProvisioningMessage",
                     "[%s] %s Missing reply headers — processing without reply for user: %s",
                     site, channelName, request.getUserName());
-            return dbWriteService.processEvent(request)
-                    .onFailure().recoverWithUni(t -> {
-                        LoggingUtil.logError(log, "handleProvisioningMessage", (Throwable) t,
-                                "[%s] %s Error processing event (no reply headers) for user: %s | eventType: %s",
-                                site, channelName, request.getUserName(), request.getEventType());
-                        return Uni.createFrom().voidItem();
-                    });
+            return processedWithRetry
+                    .onFailure().invoke(t -> LoggingUtil.logError(log, "handleProvisioningMessage", t,
+                            "[%s] %s Retries exhausted (no reply headers), routing to DLQ for user: %s | eventType: %s",
+                            site, channelName, finalRequest.getUserName(), finalRequest.getEventType()));
         }
 
         byte[] correlationId = correlationHeader.value();
         String replyTopic    = new String(replyTopicHeader.value(), StandardCharsets.UTF_8);
         LoggingUtil.logDebug(log, "handleProvisioningMessage", "[%s] %s Reply topic: %s", site, channelName, replyTopic);
 
-        DBWriteRequest finalRequest = request;
-        return dbWriteService.processEvent(request)
+        return processedWithRetry
                 .onItem().invoke(() -> {
                     int count = processedCounter.incrementAndGet();
                     if (count % 100 == 0) LoggingUtil.logDebug(log, "handleProvisioningMessage",
@@ -168,9 +194,10 @@ public class DBWriteConsumer {
                 .onItem().transformToUni(v -> sendReply(replyTopic, correlationId, "SUCCESS"))
                 .onFailure().recoverWithUni(throwable -> {
                     LoggingUtil.logError(log, "handleProvisioningMessage", throwable,
-                            "[%s] %s Error processing event for user: %s | eventType: %s",
+                            "[%s] %s Retries exhausted, replying FAIL and routing to DLQ for user: %s | eventType: %s",
                             site, channelName, finalRequest.getUserName(), finalRequest.getEventType());
-                    return sendReply(replyTopic, correlationId, "FAIL: " + throwable.getMessage());
+                    return sendReply(replyTopic, correlationId, "FAIL: " + throwable.getMessage())
+                            .onItem().transformToUni(v -> Uni.createFrom().<Void>failure(throwable));
                 });
     }
 
