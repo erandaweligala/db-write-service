@@ -74,6 +74,12 @@ pool:
 # Override with app.site=DR for DR-site deployment
 app:
   site: DC
+  kafka:
+    # Maximum number of times a failed message will be republished to its
+    # source topic before it is routed to the dead-letter topic instead.
+    max-retries: 3
+    # Dead-letter topic for messages that exhaust their retry budget.
+    dlq-topic: db-write-dlq
 
 # Kafka Configuration
 
@@ -147,6 +153,13 @@ mp:
     # Outgoing: provisioning reply channel (topic set dynamically per-message)
     outgoing:
       responses-out:
+        connector: smallrye-kafka
+        value.serializer: org.apache.kafka.common.serialization.StringSerializer
+        key.serializer: org.apache.kafka.common.serialization.StringSerializer
+
+      # Retry / DLQ channel — used by KafkaRetryHandler. Topic is set per-message
+      # via metadata (source topic for retries, db-write-dlq for exhausted messages).
+      retry-out:
         connector: smallrye-kafka
         value.serializer: org.apache.kafka.common.serialization.StringSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
