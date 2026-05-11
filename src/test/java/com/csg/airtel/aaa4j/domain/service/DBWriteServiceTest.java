@@ -27,9 +27,6 @@ class DBWriteServiceTest {
     DBWriteRepository dbWriteRepository;
 
     @Mock
-    DBOperationsService dbOperationsService;
-
-    @Mock
     Pool pool;
 
     @Mock
@@ -39,7 +36,7 @@ class DBWriteServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new DBWriteService(dbWriteRepository, dbOperationsService, pool);
+        service = new DBWriteService(dbWriteRepository, pool);
     }
 
     // -----------------------------------------------------------------------

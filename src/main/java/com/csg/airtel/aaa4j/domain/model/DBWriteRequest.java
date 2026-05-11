@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.domain.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
@@ -15,7 +16,7 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonIgnoreProperties(ignoreUnknown = true)  // ADD THIS
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class DBWriteRequest {
     private String eventType;
     private String timestamp;
@@ -24,4 +25,7 @@ public class DBWriteRequest {
     private Map<String, Object> whereConditions;
     private String tableName;
     private List<DBWriteRequest> relatedWrites;
+
+    @JsonIgnore
+    private transient String traceId;
 }

@@ -9,7 +9,6 @@ import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Map;
 
 @ApplicationScoped
@@ -45,7 +44,7 @@ public class DBOperationsService {
             log.debugf("Operation=%s, table=%s", eventType, tableName);
         }
 
-        Instant startTime = Instant.now();
+        long startNanos = System.nanoTime();
 
         if (eventType.equalsIgnoreCase("DELETE")){
             if (whereConditions.isEmpty()) {
@@ -56,14 +55,13 @@ public class DBOperationsService {
 
             return dbWriteRepository.executeDelete(tableName, whereConditions)
                     .onItem().invoke(rowCount -> {
-                        // Record success metrics
-                        Duration duration = Duration.between(startTime, Instant.now());
+                        long elapsedNanos = System.nanoTime() - startNanos;
                         metrics.recordDbUpdate();
-                        metrics.recordDbUpdateDuration(duration);
+                        metrics.recordDbUpdateDuration(Duration.ofNanos(elapsedNanos));
                         circuitBreaker.recordSuccess();
 
                         if (log.isDebugEnabled()) {
-                            log.debugf("Deleted %s: %d rows in %d ms", tableName, rowCount, duration.toMillis());
+                            log.debugf("Deleted %s: %d rows in %d ms", tableName, rowCount, elapsedNanos / 1_000_000L);
                         }
                     })
                     .onFailure().invoke(throwable -> {
@@ -77,14 +75,13 @@ public class DBOperationsService {
 
         return dbWriteRepository.executeInsert(tableName, rowValues)
                 .onItem().invoke(rowCount -> {
-                    // Record success metrics
-                    Duration duration = Duration.between(startTime, Instant.now());
+                    long elapsedNanos = System.nanoTime() - startNanos;
                     metrics.recordDbUpdate();
-                    metrics.recordDbUpdateDuration(duration);
+                    metrics.recordDbUpdateDuration(Duration.ofNanos(elapsedNanos));
                     circuitBreaker.recordSuccess();
 
                     if (log.isDebugEnabled()) {
-                        log.debugf("Inserted %s: %d rows in %d ms", tableName, rowCount, duration.toMillis());
+                        log.debugf("Inserted %s: %d rows in %d ms", tableName, rowCount, elapsedNanos / 1_000_000L);
                     }
                 })
                 .onFailure().invoke(throwable -> {

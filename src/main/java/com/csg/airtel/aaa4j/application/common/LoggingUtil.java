@@ -30,6 +30,7 @@ public class LoggingUtil {
      * Log WARN level message with structured format
      */
     public static void logWarn(Logger logger, String method, String message, Object... args) {
+        if (!logger.isEnabled(Logger.Level.WARN)) return;
         logger.warn(buildMessage(method, message, args));
     }
 
@@ -58,7 +59,9 @@ public class LoggingUtil {
      * Avoids String.format() which is CPU-heavy (regex parsing, Formatter object creation).
      */
     private static String buildMessage(String method, String message, Object... args) {
-        if (args.length == 0) {
+        if (method == null) method = "";
+        if (message == null) message = "";
+        if (args == null || args.length == 0) {
             return new StringBuilder(method.length() + message.length() + 2)
                     .append('[').append(method).append(']').append(message).toString();
         }
