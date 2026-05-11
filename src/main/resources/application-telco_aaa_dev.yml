@@ -81,6 +81,13 @@ kafka:
   bootstrap:
     servers: kafka-headless.cluster-dc.svc.cluster.local:9092
 
+# DB write resilience — retry transient DB failures in-app, DLT terminal ones.
+db:
+  retry:
+    attempts: 5
+    initial-backoff-ms: 200
+    max-backoff-ms: 5000
+
 mp:
   messaging:
     incoming:
@@ -97,7 +104,10 @@ mp:
         max.poll.interval.ms: 10000
         session.timeout.ms: 10000
         heartbeat.interval.ms: 3000
-        failure-strategy: ignore
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: DC-DR-DLT
+        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.ByteArraySerializer
 
       # DR→DC accounting channel (reverse direction)
       db-write-events-reverse:
@@ -112,7 +122,10 @@ mp:
         max.poll.interval.ms: 10000
         session.timeout.ms: 10000
         heartbeat.interval.ms: 3000
-        failure-strategy: ignore
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: DR-DC-DLT
+        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.ByteArraySerializer
 
       # DC→DR provisioning channel (request-reply)
       db-write-events-dr:
@@ -127,7 +140,10 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        failure-strategy: ignore
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: dc-provisioning-DLT
+        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
 
       # DR→DC provisioning channel (reverse request-reply)
       db-write-events-dc:
@@ -142,7 +158,10 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        failure-strategy: ignore
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: dr-provisioning-DLT
+        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
 
     # Outgoing: provisioning reply channel (topic set dynamically per-message)
     outgoing:
