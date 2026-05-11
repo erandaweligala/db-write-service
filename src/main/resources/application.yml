@@ -104,6 +104,19 @@ app:
 kafka:
   bootstrap:
     servers: localhost:9092
+
+# ============================================================
+# DB WRITE RESILIENCE (in-app retry on transient DB failure)
+# ============================================================
+# Transient failures (connection lost, timeout, deadlock, circuit OPEN) are retried
+# in-process with exponential backoff. Only AFTER retries are exhausted does the
+# message get sent to its dead-letter topic — guaranteeing zero data loss.
+db:
+  retry:
+    attempts: 5                # 5 attempts ≈ 200ms+400ms+800ms+1.6s+3.2s ≈ 6s of retry
+    initial-backoff-ms: 200
+    max-backoff-ms: 5000
+
 mp:
   messaging:
     incoming:
@@ -119,7 +132,13 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        failure-strategy: ignore
+        # On terminal failure (retries exhausted OR permanent error) forward the
+        # original Kafka record to a dead-letter topic so the payload is preserved
+        # for replay / triage. NEVER use "ignore" — that silently drops data.
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: accounting-db-dc-DLT
+        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.ByteArraySerializer
 
       db-write-events-reverse:
         connector: smallrye-kafka
@@ -133,7 +152,10 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        failure-strategy: ignore
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: dr.accounting-db-dc-DLT
+        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.ByteArraySerializer
 
       db-write-events-scheduler:
         connector: smallrye-kafka
@@ -147,21 +169,27 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        failure-strategy: ignore
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: scheduler-dc-DLT
+        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.ByteArraySerializer
 
-    db-write-events-scheduler-dr:
-      connector: smallrye-kafka
-      topic: dr.scheduler-dc
-      group.id: accounting-dr-group
-      value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
-      key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      auto.offset.reset: earliest
-      enable.auto.commit: false
-      max.poll.records: 100
-      max.poll.interval.ms: 300000
-      session.timeout.ms: 30000
-      heartbeat.interval.ms: 10000
-      failure-strategy: ignore
+      db-write-events-scheduler-dr:
+        connector: smallrye-kafka
+        topic: dr.scheduler-dc
+        group.id: accounting-dr-group
+        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: earliest
+        enable.auto.commit: false
+        max.poll.records: 100
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: dr.scheduler-dc-DLT
+        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.ByteArraySerializer
 
       # ------------------------------------------------
       # DC→DR provisioning channel (request-reply)
@@ -179,7 +207,10 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        failure-strategy: ignore
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: dc-provisioning-DLT
+        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
 
       # ------------------------------------------------
       # DR→DC provisioning channel (reverse request-reply)
@@ -197,7 +228,10 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        failure-strategy: ignore
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: dr-provisioning-DLT
+        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
 
     # ------------------------------------------------
     # Outgoing: provisioning reply channel
