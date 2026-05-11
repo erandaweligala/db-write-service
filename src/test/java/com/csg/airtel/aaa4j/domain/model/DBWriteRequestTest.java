@@ -34,7 +34,8 @@ class DBWriteRequestTest {
                 whereConditions,
                 columnValues,
                 "UPDATE_EVENT",
-                new ArrayList<>()
+                new ArrayList<>(),
+                null
         );
     }
 

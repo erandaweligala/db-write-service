@@ -16,13 +16,11 @@ public class DBWriteService {
 
     private static final Logger log = Logger.getLogger(DBWriteService.class);
     final DBWriteRepository dbWriteRepository;
-    final DBOperationsService dbOperationsService;
     final Pool pool;
 
     @Inject
-    public DBWriteService(DBWriteRepository dbWriteRepository, DBOperationsService dbOperationsService, Pool pool) {
+    public DBWriteService(DBWriteRepository dbWriteRepository, Pool pool) {
         this.dbWriteRepository = dbWriteRepository;
-        this.dbOperationsService = dbOperationsService;
         this.pool = pool;
     }
 
@@ -39,48 +37,56 @@ public class DBWriteService {
         }
 
         String eventType = request.getEventType();
+        String traceId = request.getTraceId();
 
         if (eventType == null || eventType.isBlank()) {
             LoggingUtil.logWarn(log, "processEvent",
-                    "Received request with null/blank eventType for user: %s, table: %s — skipping",
-                    request.getUserName(), request.getTableName());
+                    "[traceId=%s] Received request with null/blank eventType for user: %s, table: %s — skipping",
+                    traceId, request.getUserName(), request.getTableName());
             return Uni.createFrom().voidItem();
         }
 
-        LoggingUtil.logDebug(log, "processEvent", "Processing eventType=%s for user=%s on table=%s",
-                eventType, request.getUserName(), request.getTableName());
+        // Normalize once to avoid re-allocating an uppercase String on every switch path.
+        String op = eventType.toUpperCase();
+
+        if (log.isDebugEnabled()) {
+            LoggingUtil.logDebug(log, "processEvent",
+                    "[traceId=%s] Processing eventType=%s for user=%s on table=%s",
+                    traceId, op, request.getUserName(), request.getTableName());
+        }
 
         boolean hasRelatedWrites = request.getRelatedWrites() != null && !request.getRelatedWrites().isEmpty();
 
         if (hasRelatedWrites) {
             return pool.withTransaction(conn ->
-                    processSingleWriteWithCount(conn, request)
+                    processSingleWriteWithCount(conn, request, op)
                             .chain(rowCount -> {
                                 if (rowCount > 0) {
                                     return processRelatedWrites(conn, request);
-                                } else {
-                                    LoggingUtil.logDebug(log, "processEvent",
-                                            "Parent insert was duplicate (0 rows affected), " +
-                                            "skipping related writes for user=%s, table=%s",
-                                            request.getUserName(), request.getTableName());
-                                    return Uni.createFrom().voidItem();
                                 }
+                                if (log.isDebugEnabled()) {
+                                    LoggingUtil.logDebug(log, "processEvent",
+                                            "[traceId=%s] Parent insert was duplicate (0 rows affected), " +
+                                            "skipping related writes for user=%s, table=%s",
+                                            traceId, request.getUserName(), request.getTableName());
+                                }
+                                return Uni.createFrom().voidItem();
                             })
             );
         }
 
-        return processSingleWrite(request);
+        return processSingleWrite(request, op);
     }
 
-    private Uni<Void> processSingleWrite(DBWriteRequest request) {
-        return switch (request.getEventType().toUpperCase()) {
-            case "CREATE", "BULK_CREATE","INSERT" ->
+    private Uni<Void> processSingleWrite(DBWriteRequest request, String op) {
+        return switch (op) {
+            case "CREATE", "BULK_CREATE", "INSERT" ->
                     dbWriteRepository.executeInsert(
                             request.getTableName(),
                             request.getColumnValues()
                     ).replaceWithVoid();
 
-            case "UPDATE", "BULK_UPDATE","UPDATE_EVENT" ->
+            case "UPDATE", "BULK_UPDATE", "UPDATE_EVENT" ->
                     dbWriteRepository.update(
                             request.getTableName(),
                             request.getColumnValues(),
@@ -94,23 +100,24 @@ public class DBWriteService {
                     ).replaceWithVoid();
 
             default -> {
-                LoggingUtil.logWarn(log, "processSingleWrite", "Unknown eventType: '%s' for user: %s — skipping",
-                        request.getEventType(), request.getUserName());
+                LoggingUtil.logWarn(log, "processSingleWrite",
+                        "[traceId=%s] Unknown eventType: '%s' for user: %s — skipping",
+                        request.getTraceId(), request.getEventType(), request.getUserName());
                 yield Uni.createFrom().voidItem();
             }
         };
     }
 
-    private Uni<Void> processSingleWrite(SqlClient conn, DBWriteRequest request) {
-        return switch (request.getEventType().toUpperCase()) {
-            case "CREATE", "BULK_CREATE" , "INSERT" ->
+    private Uni<Void> processSingleWrite(SqlClient conn, DBWriteRequest request, String op) {
+        return switch (op) {
+            case "CREATE", "BULK_CREATE", "INSERT" ->
                     dbWriteRepository.executeInsert(
                             conn,
                             request.getTableName(),
                             request.getColumnValues()
                     ).replaceWithVoid();
 
-            case "UPDATE", "BULK_UPDATE","UPDATE_EVENT" ->
+            case "UPDATE", "BULK_UPDATE", "UPDATE_EVENT" ->
                     dbWriteRepository.update(
                             conn,
                             request.getTableName(),
@@ -126,8 +133,9 @@ public class DBWriteService {
                     ).replaceWithVoid();
 
             default -> {
-                LoggingUtil.logWarn(log, "processSingleWrite", "Unknown eventType: '%s' for user: %s — skipping",
-                        request.getEventType(), request.getUserName());
+                LoggingUtil.logWarn(log, "processSingleWrite",
+                        "[traceId=%s] Unknown eventType: '%s' for user: %s — skipping",
+                        request.getTraceId(), request.getEventType(), request.getUserName());
                 yield Uni.createFrom().voidItem();
             }
         };
@@ -138,16 +146,16 @@ public class DBWriteService {
      * row count so the caller can decide whether to proceed with related writes.
      * A return value of 0 means the row was a duplicate and was skipped.
      */
-    private Uni<Integer> processSingleWriteWithCount(SqlClient conn, DBWriteRequest request) {
-        return switch (request.getEventType().toUpperCase()) {
-            case "CREATE", "BULK_CREATE" ,"INSERT"->
+    private Uni<Integer> processSingleWriteWithCount(SqlClient conn, DBWriteRequest request, String op) {
+        return switch (op) {
+            case "CREATE", "BULK_CREATE", "INSERT" ->
                     dbWriteRepository.executeInsert(
                             conn,
                             request.getTableName(),
                             request.getColumnValues()
                     );
 
-            case "UPDATE", "BULK_UPDATE","UPDATE_EVENT"->
+            case "UPDATE", "BULK_UPDATE", "UPDATE_EVENT" ->
                     dbWriteRepository.update(
                             conn,
                             request.getTableName(),
@@ -163,31 +171,12 @@ public class DBWriteService {
                     );
 
             default -> {
-                LoggingUtil.logWarn(log, "processSingleWriteWithCount", "Unknown eventType: '%s' for user: %s — skipping",
-                        request.getEventType(), request.getUserName());
+                LoggingUtil.logWarn(log, "processSingleWriteWithCount",
+                        "[traceId=%s] Unknown eventType: '%s' for user: %s — skipping",
+                        request.getTraceId(), request.getEventType(), request.getUserName());
                 yield Uni.createFrom().item(0);
             }
         };
-    }
-
-    private Uni<Void> processRelatedWrites(DBWriteRequest request) {
-        if (request.getRelatedWrites() == null || request.getRelatedWrites().isEmpty()) {
-            return Uni.createFrom().voidItem();
-        }
-
-        LoggingUtil.logDebug(log, "processRelatedWrites", "Processing %d related writes for user=%s",
-                request.getRelatedWrites().size(), request.getUserName());
-
-        Uni<Void> chain = Uni.createFrom().voidItem();
-        for (DBWriteRequest related : request.getRelatedWrites()) {
-            chain = chain.chain(() -> {
-                LoggingUtil.logDebug(log, "processRelatedWrites",
-                        "Processing related write: eventType=%s, table=%s, user=%s",
-                        related.getEventType(), related.getTableName(), related.getUserName());
-                return processSingleWrite(related);
-            });
-        }
-        return chain;
     }
 
     private Uni<Void> processRelatedWrites(SqlClient conn, DBWriteRequest request) {
@@ -195,16 +184,27 @@ public class DBWriteService {
             return Uni.createFrom().voidItem();
         }
 
-        LoggingUtil.logDebug(log, "processRelatedWrites", "Processing %d related writes for user=%s",
-                request.getRelatedWrites().size(), request.getUserName());
+        String parentTraceId = request.getTraceId();
+        if (log.isDebugEnabled()) {
+            LoggingUtil.logDebug(log, "processRelatedWrites",
+                    "[traceId=%s] Processing %d related writes for user=%s",
+                    parentTraceId, request.getRelatedWrites().size(), request.getUserName());
+        }
 
         Uni<Void> chain = Uni.createFrom().voidItem();
         for (DBWriteRequest related : request.getRelatedWrites()) {
+            // Carry the parent trace id forward so child writes share the same trace.
+            if (related.getTraceId() == null) {
+                related.setTraceId(parentTraceId);
+            }
+            final String childOp = related.getEventType() == null ? "" : related.getEventType().toUpperCase();
             chain = chain.chain(() -> {
-                LoggingUtil.logDebug(log, "processRelatedWrites",
-                        "Processing related write: eventType=%s, table=%s, user=%s",
-                        related.getEventType(), related.getTableName(), related.getUserName());
-                return processSingleWrite(conn, related);
+                if (log.isDebugEnabled()) {
+                    LoggingUtil.logDebug(log, "processRelatedWrites",
+                            "[traceId=%s] Processing related write: eventType=%s, table=%s, user=%s",
+                            related.getTraceId(), childOp, related.getTableName(), related.getUserName());
+                }
+                return processSingleWrite(conn, related, childOp);
             });
         }
         return chain;

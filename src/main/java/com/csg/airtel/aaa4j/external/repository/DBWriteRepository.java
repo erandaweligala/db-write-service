@@ -13,7 +13,6 @@ import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -72,16 +71,16 @@ public class DBWriteRepository {
                     tableName, columnValues.size(), whereConditions.size());
         }
 
-        Instant startTime = Instant.now();
+        long startNanos = System.nanoTime();
 
         return executeUpdate(sqlClient, tableName, columnValues, whereConditions)
                 .onItem().invoke(rowCount -> {
-                    Duration duration = Duration.between(startTime, Instant.now());
+                    long elapsedNanos = System.nanoTime() - startNanos;
                     metrics.recordDbUpdate();
-                    metrics.recordDbUpdateDuration(duration);
+                    metrics.recordDbUpdateDuration(Duration.ofNanos(elapsedNanos));
                     circuitBreaker.recordSuccess();
                     if (log.isDebugEnabled()) {
-                        log.debugf("Updated %s: %d rows in %d ms", tableName, rowCount, duration.toMillis());
+                        log.debugf("Updated %s: %d rows in %d ms", tableName, rowCount, elapsedNanos / 1_000_000L);
                     }
                 })
                 .onFailure().invoke(throwable -> {
@@ -156,7 +155,7 @@ public class DBWriteRepository {
             return Uni.createFrom().failure(new IllegalArgumentException("Column values required"));
         }
 
-        Instant startTime = Instant.now();
+        long startNanos = System.nanoTime();
 
         int columnCount = columnValues.size();
 
@@ -196,12 +195,12 @@ public class DBWriteRepository {
                     return 0;
                 })
                 .onItem().invoke(rowCount -> {
-                    Duration duration = Duration.between(startTime, Instant.now());
+                    long elapsedNanos = System.nanoTime() - startNanos;
                     metrics.recordDbUpdate();
-                    metrics.recordDbUpdateDuration(duration);
+                    metrics.recordDbUpdateDuration(Duration.ofNanos(elapsedNanos));
                     circuitBreaker.recordSuccess();
                     if (log.isDebugEnabled()) {
-                        log.debugf("Inserted into %s: %d rows in %d ms", tableName, rowCount, duration.toMillis());
+                        log.debugf("Inserted into %s: %d rows in %d ms", tableName, rowCount, elapsedNanos / 1_000_000L);
                     }
                 })
                 .onFailure().invoke(throwable -> {
@@ -233,7 +232,7 @@ public class DBWriteRepository {
             return Uni.createFrom().failure(new IllegalArgumentException("WHERE conditions required for DELETE"));
         }
 
-        Instant startTime = Instant.now();
+        long startNanos = System.nanoTime();
 
         int whereCount = whereConditions.size();
 
@@ -260,12 +259,12 @@ public class DBWriteRepository {
                 .execute(Tuple.from(values))
                 .map(SqlResult::rowCount)
                 .onItem().invoke(rowCount -> {
-                    Duration duration = Duration.between(startTime, Instant.now());
+                    long elapsedNanos = System.nanoTime() - startNanos;
                     metrics.recordDbUpdate();
-                    metrics.recordDbUpdateDuration(duration);
+                    metrics.recordDbUpdateDuration(Duration.ofNanos(elapsedNanos));
                     circuitBreaker.recordSuccess();
                     if (log.isDebugEnabled()) {
-                        log.debugf("Deleted from %s: %d rows in %d ms", tableName, rowCount, duration.toMillis());
+                        log.debugf("Deleted from %s: %d rows in %d ms", tableName, rowCount, elapsedNanos / 1_000_000L);
                     }
                 })
                 .onFailure().invoke(throwable -> {
