@@ -1,6 +1,5 @@
 package com.csg.airtel.aaa4j.domain.service;
 
-import com.csg.airtel.aaa4j.application.aspect.LogDomainService;
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.external.repository.DBWriteRepository;
@@ -75,7 +74,7 @@ public class DBWriteService {
 
     private Uni<Void> processSingleWrite(DBWriteRequest request) {
         return switch (request.getEventType().toUpperCase()) {
-            case "CREATE", "BULK_CREATE" ->
+            case "CREATE", "BULK_CREATE","INSERT" ->
                     dbWriteRepository.executeInsert(
                             request.getTableName(),
                             request.getColumnValues()
@@ -104,14 +103,14 @@ public class DBWriteService {
 
     private Uni<Void> processSingleWrite(SqlClient conn, DBWriteRequest request) {
         return switch (request.getEventType().toUpperCase()) {
-            case "CREATE", "BULK_CREATE" ->
+            case "CREATE", "BULK_CREATE" , "INSERT" ->
                     dbWriteRepository.executeInsert(
                             conn,
                             request.getTableName(),
                             request.getColumnValues()
                     ).replaceWithVoid();
 
-            case "UPDATE", "BULK_UPDATE" ->
+            case "UPDATE", "BULK_UPDATE","UPDATE_EVENT" ->
                     dbWriteRepository.update(
                             conn,
                             request.getTableName(),
@@ -141,14 +140,14 @@ public class DBWriteService {
      */
     private Uni<Integer> processSingleWriteWithCount(SqlClient conn, DBWriteRequest request) {
         return switch (request.getEventType().toUpperCase()) {
-            case "CREATE", "BULK_CREATE" ->
+            case "CREATE", "BULK_CREATE" ,"INSERT"->
                     dbWriteRepository.executeInsert(
                             conn,
                             request.getTableName(),
                             request.getColumnValues()
                     );
 
-            case "UPDATE", "BULK_UPDATE" ->
+            case "UPDATE", "BULK_UPDATE","UPDATE_EVENT"->
                     dbWriteRepository.update(
                             conn,
                             request.getTableName(),

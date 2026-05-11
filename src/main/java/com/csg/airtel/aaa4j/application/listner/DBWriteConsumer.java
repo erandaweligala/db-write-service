@@ -102,6 +102,76 @@ public class DBWriteConsumer {
     }
 
 
+    @Incoming("db-write-events-scheduler")
+    @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
+    public Uni<Void> consumeScheduler(Message<String> message) {
+        DBWriteRequest request;
+        try {
+            request = objectMapper.readValue(message.getPayload(), DBWriteRequest.class);
+        } catch (Exception e) {
+            LoggingUtil.logError(log, "consumeScheduler", e,
+                    "[%s] %s Failed to deserialize payload", site);
+            return Uni.createFrom().voidItem();
+        }
+
+
+        if (log.isDebugEnabled()) {
+            message.getMetadata(IncomingKafkaRecordMetadata.class)
+                    .ifPresent(metadata -> log.debugf("[%s] DR-DC received from partition: %d, offset: %d, key: %s",
+                            site, metadata.getPartition(), metadata.getOffset(), metadata.getKey()));
+        }
+
+        return dbWriteService.processDbWriteRequest(request)
+                .onItem().invoke(() -> {
+                    int count = processedCounter.incrementAndGet();
+                    if (count % 100 == 0) {
+                        LoggingUtil.logDebug(log, "consumeScheduler", "[%s] Processed %d DR-DC messages", site, count);
+                    }
+                })
+                .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeScheduler", throwable,
+                        "[%s] Error processing DR-DC event for user: %s | eventType: %s",
+                        site, request.getUserName(), request.getEventType()))
+                .onItem().transformToUni(result -> Uni.createFrom().voidItem())
+                .onFailure().recoverWithItem((Void) null);
+    }
+
+
+    @Incoming("db-write-events-scheduler-dr")
+    @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
+    public Uni<Void> consumeSchedulerDr(Message<String> message) {
+        DBWriteRequest request;
+        try {
+            request = objectMapper.readValue(message.getPayload(), DBWriteRequest.class);
+        } catch (Exception e) {
+            LoggingUtil.logError(log, "consumeScheduler", e,
+                    "[%s] %s Failed to deserialize payload", site);
+            return Uni.createFrom().voidItem();
+        }
+
+
+        if (log.isDebugEnabled()) {
+            message.getMetadata(IncomingKafkaRecordMetadata.class)
+                    .ifPresent(metadata -> log.debugf("[%s] DR-DC received from partition: %d, offset: %d, key: %s",
+                            site, metadata.getPartition(), metadata.getOffset(), metadata.getKey()));
+        }
+
+        return dbWriteService.processDbWriteRequest(request)
+                .onItem().invoke(() -> {
+                    int count = processedCounter.incrementAndGet();
+                    if (count % 100 == 0) {
+                        LoggingUtil.logDebug(log, "consumeScheduler", "[%s] Processed %d DR-DC messages", site, count);
+                    }
+                })
+                .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeScheduler", throwable,
+                        "[%s] Error processing DR-DC event for user: %s | eventType: %s",
+                        site, request.getUserName(), request.getEventType()))
+                .onItem().transformToUni(result -> Uni.createFrom().voidItem())
+                .onFailure().recoverWithItem((Void) null);
+    }
+
+
+
+
     @Incoming("db-write-events-dr")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeAndReplyDR(Message<String> message) {

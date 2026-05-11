@@ -4,8 +4,8 @@ quarkus:
     port: 8085
   datasource:
     db-kind: oracle
-    username: aaa
-    password: Aaa!89nky78D
+    username: "${DB_USER}"
+    password: "${DB_PASSWORD}"
     reactive:
       url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
     jdbc:
@@ -41,9 +41,9 @@ quarkus:
   redis:
     client-type: sentinel
     hosts: redis://redis-cluster.cluster-redis.svc.cluster.local:26379
-    master-name: mymaster
-    role: master
-    password: AAAtest_Redis_Pass_w0rd!
+    master-name: "${REDIS_MASTER_NAME}"
+    role: "${REDIS_ROLE}"
+    password: "${REDIS_PASSWORD}"
     max-pool-size: 300
     max-waiting-handlers: 5000
     max-pool-waiting: 800

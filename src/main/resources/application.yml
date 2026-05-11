@@ -1,4 +1,3 @@
-
 quarkus:
   http:
     port: 8085
@@ -135,6 +134,34 @@ mp:
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
         failure-strategy: ignore
+
+      db-write-events-scheduler:
+        connector: smallrye-kafka
+        topic: scheduler-dc
+        group.id: accounting-dr-group
+        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: earliest
+        enable.auto.commit: false
+        max.poll.records: 100
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        failure-strategy: ignore
+
+    db-write-events-scheduler-dr:
+      connector: smallrye-kafka
+      topic: dr.scheduler-dc
+      group.id: accounting-dr-group
+      value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
+      key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto.offset.reset: earliest
+      enable.auto.commit: false
+      max.poll.records: 100
+      max.poll.interval.ms: 300000
+      session.timeout.ms: 30000
+      heartbeat.interval.ms: 10000
+      failure-strategy: ignore
 
       # ------------------------------------------------
       # DC→DR provisioning channel (request-reply)
