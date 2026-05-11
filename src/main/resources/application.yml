@@ -1,6 +1,27 @@
 quarkus:
   http:
     port: 8085
+
+  otel:
+    traces:
+      exporter: none
+
+  micrometer:
+    enabled: true
+    export:
+      prometheus:
+        enabled: true
+        path: /q/metrics
+    binder:
+      jvm: true
+      system: true
+      vertx: true
+      http-server:
+        enabled: true
+      http-client:
+        enabled: true
+      kafka:
+        enabled: true
   # =========================
   # ORACLE DATASOURCE (LOCAL)
   # =========================
