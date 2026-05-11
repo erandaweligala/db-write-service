@@ -66,14 +66,14 @@ public class DBWriteConsumer {
                     site, metadata.getPartition(), metadata.getOffset(), metadata.getKey());
         }
         LoggingUtil.logInfo(log, "consumeAccountingEvent",
-                "[%s][traceId=%s] consume eventType=%s table=%s user=%s",
-                site, traceId, request.getEventType(), request.getTableName(), request.getUserName());
+                "[%s] consume eventType=%s table=%s user=%s",
+                site, request.getEventType(), request.getTableName(), request.getUserName());
 
         return dbWriteService.processDbWriteRequest(request)
                 .onItem().invoke(() -> incrementAndMaybeLog("consumeAccountingEvent", "DC-DR", traceId))
                 .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeAccountingEvent", throwable,
-                        "[%s][traceId=%s] Error processing DC-DR event for user: %s | eventType: %s",
-                        site, traceId, request.getUserName(), request.getEventType()))
+                        "[%s] Error processing DC-DR event for user: %s | eventType: %s",
+                        site, request.getUserName(), request.getEventType()))
                 .onItemOrFailure().transformToUni((v, t) -> Uni.createFrom().voidItem())
                 .eventually((Runnable) DBWriteConsumer::clearMdc);
     }
@@ -96,14 +96,14 @@ public class DBWriteConsumer {
                     site, metadata.getPartition(), metadata.getOffset(), metadata.getKey());
         }
         LoggingUtil.logInfo(log, "consumeReverseAccountingEvent",
-                "[%s][traceId=%s] consume eventType=%s table=%s user=%s",
-                site, traceId, request.getEventType(), request.getTableName(), request.getUserName());
+                "[%s] consume eventType=%s table=%s user=%s",
+                site, request.getEventType(), request.getTableName(), request.getUserName());
 
         return dbWriteService.processDbWriteRequest(request)
                 .onItem().invoke(() -> incrementAndMaybeLog("consumeReverseAccountingEvent", "DR-DC", traceId))
                 .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeReverseAccountingEvent", throwable,
-                        "[%s][traceId=%s] Error processing DR-DC event for user: %s | eventType: %s",
-                        site, traceId, request.getUserName(), request.getEventType()))
+                        "[%s] Error processing DR-DC event for user: %s | eventType: %s",
+                        site, request.getUserName(), request.getEventType()))
                 .onItemOrFailure().transformToUni((v, t) -> Uni.createFrom().voidItem())
                 .eventually((Runnable) DBWriteConsumer::clearMdc);
     }
@@ -123,7 +123,7 @@ public class DBWriteConsumer {
             bindMdc(traceId, null);
             try {
                 LoggingUtil.logError(log, "consumeScheduler", e,
-                        "[%s][traceId=%s] Failed to deserialize scheduler payload", site, traceId);
+                        "[%s] Failed to deserialize scheduler payload", site);
             } finally {
                 clearMdc();
             }
@@ -139,14 +139,14 @@ public class DBWriteConsumer {
                     site, metadata.getPartition(), metadata.getOffset(), metadata.getKey());
         }
         LoggingUtil.logInfo(log, "consumeScheduler",
-                "[%s][traceId=%s] consume eventType=%s table=%s user=%s",
-                site, traceId, request.getEventType(), request.getTableName(), request.getUserName());
+                "[%s] consume eventType=%s table=%s user=%s",
+                site, request.getEventType(), request.getTableName(), request.getUserName());
 
         return dbWriteService.processDbWriteRequest(request)
                 .onItem().invoke(() -> incrementAndMaybeLog("consumeScheduler", "scheduler", traceId))
                 .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeScheduler", throwable,
-                        "[%s][traceId=%s] Error processing scheduler event for user: %s | eventType: %s",
-                        site, traceId, request.getUserName(), request.getEventType()))
+                        "[%s] Error processing scheduler event for user: %s | eventType: %s",
+                        site, request.getUserName(), request.getEventType()))
                 .onItemOrFailure().transformToUni((v, t) -> Uni.createFrom().voidItem())
                 .eventually((Runnable) DBWriteConsumer::clearMdc);
     }
@@ -166,7 +166,7 @@ public class DBWriteConsumer {
             bindMdc(traceId, null);
             try {
                 LoggingUtil.logError(log, "consumeSchedulerDr", e,
-                        "[%s][traceId=%s] Failed to deserialize scheduler-dr payload", site, traceId);
+                        "[%s] Failed to deserialize scheduler-dr payload", site);
             } finally {
                 clearMdc();
             }
@@ -182,14 +182,14 @@ public class DBWriteConsumer {
                     site, metadata.getPartition(), metadata.getOffset(), metadata.getKey());
         }
         LoggingUtil.logInfo(log, "consumeSchedulerDr",
-                "[%s][traceId=%s] consume eventType=%s table=%s user=%s",
-                site, traceId, request.getEventType(), request.getTableName(), request.getUserName());
+                "[%s] consume eventType=%s table=%s user=%s",
+                site, request.getEventType(), request.getTableName(), request.getUserName());
 
         return dbWriteService.processDbWriteRequest(request)
                 .onItem().invoke(() -> incrementAndMaybeLog("consumeSchedulerDr", "scheduler-dr", traceId))
                 .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeSchedulerDr", throwable,
-                        "[%s][traceId=%s] Error processing scheduler-dr event for user: %s | eventType: %s",
-                        site, traceId, request.getUserName(), request.getEventType()))
+                        "[%s] Error processing scheduler-dr event for user: %s | eventType: %s",
+                        site, request.getUserName(), request.getEventType()))
                 .onItemOrFailure().transformToUni((v, t) -> Uni.createFrom().voidItem())
                 .eventually((Runnable) DBWriteConsumer::clearMdc);
     }
@@ -224,7 +224,7 @@ public class DBWriteConsumer {
             bindMdc(traceId, null);
             try {
                 LoggingUtil.logError(log, "handleProvisioningMessage", e,
-                        "[%s][traceId=%s] %s Failed to deserialize payload", site, traceId, channelName);
+                        "[%s] %s Failed to deserialize payload", site, channelName);
             } finally {
                 clearMdc();
             }
@@ -237,12 +237,12 @@ public class DBWriteConsumer {
 
         if (log.isDebugEnabled()) {
             LoggingUtil.logDebug(log, "handleProvisioningMessage",
-                    "[%s][traceId=%s] %s payload received user=%s eventType=%s",
-                    site, traceId, channelName, request.getUserName(), request.getEventType());
+                    "[%s] %s payload received user=%s eventType=%s",
+                    site, channelName, request.getUserName(), request.getEventType());
             if (metadata != null) {
                 metadata.getHeaders().forEach(h ->
-                        LoggingUtil.logDebug(log, "handleProvisioningMessage", "[%s][traceId=%s] %s Header: %s = %s",
-                                site, traceId, channelName, h.key(), new String(h.value(), StandardCharsets.UTF_8)));
+                        LoggingUtil.logDebug(log, "handleProvisioningMessage", "[%s] %s Header: %s = %s",
+                                site, channelName, h.key(), new String(h.value(), StandardCharsets.UTF_8)));
             }
         }
 
@@ -251,14 +251,14 @@ public class DBWriteConsumer {
 
         if (correlationHeader == null || replyTopicHeader == null) {
             LoggingUtil.logWarn(log, "handleProvisioningMessage",
-                    "[%s][traceId=%s] %s Missing reply headers — processing without reply for user: %s",
-                    site, traceId, channelName, request.getUserName());
+                    "[%s] %s Missing reply headers — processing without reply for user: %s",
+                    site, channelName, request.getUserName());
             DBWriteRequest noReplyRequest = request;
             return dbWriteService.processEvent(request)
                     .onFailure().recoverWithUni(t -> {
                         LoggingUtil.logError(log, "handleProvisioningMessage", t,
-                                "[%s][traceId=%s] %s Error processing event (no reply headers) for user: %s | eventType: %s",
-                                site, traceId, channelName, noReplyRequest.getUserName(), noReplyRequest.getEventType());
+                                "[%s] %s Error processing event (no reply headers) for user: %s | eventType: %s",
+                                site, channelName, noReplyRequest.getUserName(), noReplyRequest.getEventType());
                         return Uni.createFrom().voidItem();
                     })
                     .eventually((Runnable) DBWriteConsumer::clearMdc);
@@ -267,7 +267,7 @@ public class DBWriteConsumer {
         byte[] correlationId = correlationHeader.value();
         String replyTopic    = new String(replyTopicHeader.value(), StandardCharsets.UTF_8);
         LoggingUtil.logDebug(log, "handleProvisioningMessage",
-                "[%s][traceId=%s] %s Reply topic: %s", site, traceId, channelName, replyTopic);
+                "[%s] %s Reply topic: %s", site, channelName, replyTopic);
 
         DBWriteRequest finalRequest = request;
         return dbWriteService.processEvent(request)
@@ -275,8 +275,8 @@ public class DBWriteConsumer {
                 .onItem().transformToUni(v -> sendReply(replyTopic, correlationId, "SUCCESS"))
                 .onFailure().recoverWithUni(throwable -> {
                     LoggingUtil.logError(log, "handleProvisioningMessage", throwable,
-                            "[%s][traceId=%s] %s Error processing event for user: %s | eventType: %s",
-                            site, traceId, channelName, finalRequest.getUserName(), finalRequest.getEventType());
+                            "[%s] %s Error processing event for user: %s | eventType: %s",
+                            site, channelName, finalRequest.getUserName(), finalRequest.getEventType());
                     return sendReply(replyTopic, correlationId, "FAIL: " + throwable.getMessage());
                 })
                 .eventually((Runnable) DBWriteConsumer::clearMdc);
@@ -295,8 +295,8 @@ public class DBWriteConsumer {
     private void incrementAndMaybeLog(String method, String label, String traceId) {
         int count = processedCounter.incrementAndGet();
         if (count % 100 == 0 && log.isInfoEnabled()) {
-            LoggingUtil.logInfo(log, method, "[%s][traceId=%s] Processed %d %s messages",
-                    site, traceId, count, label);
+            LoggingUtil.logInfo(log, method, "[%s] Processed %d %s messages",
+                    site, count, label);
         }
     }
 
