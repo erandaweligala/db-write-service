@@ -1,0 +1,55 @@
+groups:
+  - name: db-write-service-error-monitoring
+    rules:
+      # Sustained DLT routing - real outage, not a blip
+      - alert: KafkaDltRoutingHigh
+        expr: sum by (channel) (rate(kafka_consumer_dlt_routed_total[5m])) > 5
+        for: 5m
+        labels:
+          severity: critical
+          service: db-write-service
+        annotations:
+          summary: "{{ $labels.channel }} routing >5 msg/s to DLT"
+          description: "Channel {{ $labels.channel }} has sustained DLT routing above 5 msg/s for 5 minutes. Investigate downstream failures."
+
+      # DB unreachable / saturated
+      - alert: DbCircuitBreakerOpen
+        expr: db_circuit_breaker_state == 1
+        for: 1m
+        labels:
+          severity: critical
+          service: db-write-service
+        annotations:
+          summary: "DB circuit breaker OPEN - writes are being rejected"
+          description: "The database circuit breaker has been open for 1 minute. All write attempts are being rejected."
+
+      # Poison message storm - many permanent failures
+      - alert: PermanentFailureSpike
+        expr: sum by (channel) (rate(kafka_consumer_failures_total{classification="permanent"}[5m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+          service: db-write-service
+        annotations:
+          summary: "{{ $labels.channel }} permanent failure rate >1 msg/s"
+          description: "Channel {{ $labels.channel }} is producing permanent failures at >1 msg/s for 10 minutes. Likely a poison message storm."
+
+      # Retry storm - DB is flaky but not dead
+      - alert: HighRetryRate
+        expr: sum(rate(kafka_consumer_retries_total[5m])) > 50
+        labels:
+          severity: warning
+          service: db-write-service
+        annotations:
+          summary: "Kafka consumer retry rate >50/s"
+          description: "Aggregate retry rate has exceeded 50/s. Database or downstream dependency may be flaky."
+
+      # Deserialization issues - upstream is producing bad messages
+      - alert: DeserializationFailures
+        expr: sum by (channel) (rate(kafka_consumer_deserialization_failures_total[5m])) > 0
+        labels:
+          severity: warning
+          service: db-write-service
+        annotations:
+          summary: "{{ $labels.channel }} has deserialization failures"
+          description: "Channel {{ $labels.channel }} is failing to deserialize messages. Upstream producer may have a schema mismatch."
