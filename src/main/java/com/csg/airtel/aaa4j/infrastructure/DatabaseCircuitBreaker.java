@@ -1,7 +1,12 @@
 package com.csg.airtel.aaa4j.infrastructure;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.time.Duration;
@@ -28,6 +33,39 @@ public class DatabaseCircuitBreaker {
     private final AtomicReference<CircuitState> state = new AtomicReference<>(CircuitState.CLOSED);
     private final AtomicReference<Instant> lastOpenTime = new AtomicReference<>(Instant.MIN);
 
+    @Inject
+    MeterRegistry meterRegistry;
+
+    private Counter transitionsToOpen;
+    private Counter transitionsToHalfOpen;
+    private Counter transitionsToClosed;
+
+    @PostConstruct
+    void registerMetrics() {
+        // Gauge that Prometheus can alert on (>= 1 means service is degraded).
+        //   0 = CLOSED (healthy), 1 = HALF_OPEN (probing), 2 = OPEN (rejecting)
+        Gauge.builder("db.circuit.breaker.state", state, s -> s.get().ordinal())
+                .description("Database circuit breaker state (0=CLOSED, 1=OPEN, 2=HALF_OPEN per CircuitState ordinal)")
+                .register(meterRegistry);
+
+        Gauge.builder("db.circuit.breaker.failure.count", failureCount, AtomicInteger::get)
+                .description("Current consecutive failure count tracked by the breaker")
+                .register(meterRegistry);
+
+        transitionsToOpen = Counter.builder("db.circuit.breaker.transitions")
+                .description("Circuit breaker state transitions")
+                .tag("to", "OPEN")
+                .register(meterRegistry);
+        transitionsToHalfOpen = Counter.builder("db.circuit.breaker.transitions")
+                .description("Circuit breaker state transitions")
+                .tag("to", "HALF_OPEN")
+                .register(meterRegistry);
+        transitionsToClosed = Counter.builder("db.circuit.breaker.transitions")
+                .description("Circuit breaker state transitions")
+                .tag("to", "CLOSED")
+                .register(meterRegistry);
+    }
+
     /**
      * Check if the circuit breaker allows the operation
      */
@@ -44,6 +82,7 @@ public class DatabaseCircuitBreaker {
                     LoggingUtil.logInfo(log, "allowRequest", "Circuit breaker transitioning from OPEN to HALF_OPEN");
                     state.set(CircuitState.HALF_OPEN);
                     successCount.set(0);
+                    if (transitionsToHalfOpen != null) transitionsToHalfOpen.increment();
                     return true;
                 }
                 return false;
@@ -69,6 +108,7 @@ public class DatabaseCircuitBreaker {
                 state.set(CircuitState.CLOSED);
                 failureCount.set(0);
                 successCount.set(0);
+                if (transitionsToClosed != null) transitionsToClosed.increment();
             }
         } else if (currentState == CircuitState.CLOSED) {
             // Reset failure count on success
@@ -87,12 +127,14 @@ public class DatabaseCircuitBreaker {
             state.set(CircuitState.OPEN);
             lastOpenTime.set(Instant.now());
             successCount.set(0);
+            if (transitionsToOpen != null) transitionsToOpen.increment();
         } else if (currentState == CircuitState.CLOSED) {
             int failures = failureCount.incrementAndGet();
             if (failures >= FAILURE_THRESHOLD) {
                 LoggingUtil.logError(log, "recordFailure", null, "Circuit breaker OPENING after %d failures", failures);
                 state.set(CircuitState.OPEN);
                 lastOpenTime.set(Instant.now());
+                if (transitionsToOpen != null) transitionsToOpen.increment();
             }
         }
     }

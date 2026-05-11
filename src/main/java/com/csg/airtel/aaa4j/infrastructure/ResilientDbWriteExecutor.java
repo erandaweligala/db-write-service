@@ -36,6 +36,7 @@ public class ResilientDbWriteExecutor {
 
     private final DBWriteService dbWriteService;
     private final DatabaseCircuitBreaker circuitBreaker;
+    private final KafkaErrorMetrics metrics;
 
     @ConfigProperty(name = "db.retry.attempts", defaultValue = "5")
     int retryAttempts;
@@ -48,9 +49,11 @@ public class ResilientDbWriteExecutor {
 
     @Inject
     public ResilientDbWriteExecutor(DBWriteService dbWriteService,
-                                    DatabaseCircuitBreaker circuitBreaker) {
+                                    DatabaseCircuitBreaker circuitBreaker,
+                                    KafkaErrorMetrics metrics) {
         this.dbWriteService = dbWriteService;
         this.circuitBreaker = circuitBreaker;
+        this.metrics = metrics;
     }
 
     /**
@@ -58,8 +61,11 @@ public class ResilientDbWriteExecutor {
      *
      * The returned Uni only fails for terminal errors that must be sent to the DLT.
      * Transient errors fail the Uni only after all retries are exhausted.
+     *
+     * @param channel the Smallrye channel name, used to tag Prometheus metrics so
+     *                dashboards can distinguish failure rates per topic.
      */
-    public Uni<Void> execute(DBWriteRequest request) {
+    public Uni<Void> execute(String channel, DBWriteRequest request) {
         return Uni.createFrom().deferred(() -> {
                     if (!circuitBreaker.allowRequest()) {
                         return Uni.createFrom().failure(
@@ -67,10 +73,19 @@ public class ResilientDbWriteExecutor {
                     }
                     return dbWriteService.processDbWriteRequest(request);
                 })
-                .onItem().invoke(circuitBreaker::recordSuccess)
+                .onItem().invoke(() -> {
+                    circuitBreaker.recordSuccess();
+                    metrics.recordSuccess(channel);
+                })
                 .onFailure().invoke(t -> {
-                    if (KafkaFailureClassifier.isTransient(t)) {
+                    boolean transientFailure = KafkaFailureClassifier.isTransient(t);
+                    metrics.recordFailure(channel, transientFailure);
+                    if (transientFailure) {
                         circuitBreaker.recordFailure();
+                        // Every transient failure on this path will trigger a retry below
+                        // (until atMost is reached); count it so retries_total reflects
+                        // attempted retries, not just the final outcome.
+                        metrics.recordRetry(channel);
                     }
                 })
                 .onFailure(KafkaFailureClassifier::isTransient)
@@ -79,7 +94,9 @@ public class ResilientDbWriteExecutor {
                 .withJitter(0.2)
                 .atMost(retryAttempts)
                 .onFailure().invoke(t -> {
-                    if (KafkaFailureClassifier.isTransient(t)) {
+                    boolean transientFailure = KafkaFailureClassifier.isTransient(t);
+                    metrics.recordDltRouted(channel, transientFailure);
+                    if (transientFailure) {
                         LoggingUtil.logError(log, "execute", t,
                                 "DB write FAILED after %d retries — message will go to DLT (user=%s, table=%s, eventType=%s)",
                                 retryAttempts, request.getUserName(), request.getTableName(), request.getEventType());

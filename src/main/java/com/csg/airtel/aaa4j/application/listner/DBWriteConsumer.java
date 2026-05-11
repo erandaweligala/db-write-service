@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.application.listner;
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.application.common.TraceIdGenerator;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
+import com.csg.airtel.aaa4j.infrastructure.KafkaErrorMetrics;
 import com.csg.airtel.aaa4j.infrastructure.KafkaFailureClassifier;
 import com.csg.airtel.aaa4j.infrastructure.ResilientDbWriteExecutor;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,6 +33,7 @@ public class DBWriteConsumer {
     private static final String HEADER_TRACE_ID = "traceId";
 
     private final ResilientDbWriteExecutor executor;
+    private final KafkaErrorMetrics errorMetrics;
     private final AtomicInteger processedCounter = new AtomicInteger(0);
 
     @ConfigProperty(name = "app.site", defaultValue = "DC")
@@ -45,8 +47,9 @@ public class DBWriteConsumer {
     MutinyEmitter<String> replyEmitter;
 
     @Inject
-    public DBWriteConsumer(ResilientDbWriteExecutor executor) {
+    public DBWriteConsumer(ResilientDbWriteExecutor executor, KafkaErrorMetrics errorMetrics) {
         this.executor = executor;
+        this.errorMetrics = errorMetrics;
     }
 
     /**
@@ -70,7 +73,7 @@ public class DBWriteConsumer {
                 "[%s] consume eventType=%s table=%s user=%s",
                 site, request.getEventType(), request.getTableName(), request.getUserName());
 
-        return executor.execute(request)
+        return executor.execute("db-write-events", request)
                 .onItem().invoke(() -> incrementAndMaybeLog("consumeAccountingEvent", "DC-DR"))
                 .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeAccountingEvent", throwable,
                         "[%s] DC-DR routing to DLT after retries: user=%s | eventType=%s | transient=%s",
@@ -100,7 +103,7 @@ public class DBWriteConsumer {
                 "[%s] consume eventType=%s table=%s user=%s",
                 site, request.getEventType(), request.getTableName(), request.getUserName());
 
-        return executor.execute(request)
+        return executor.execute("db-write-events-reverse", request)
                 .onItem().invoke(() -> incrementAndMaybeLog("consumeReverseAccountingEvent", "DR-DC"))
                 .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeReverseAccountingEvent", throwable,
                         "[%s] DR-DC routing to DLT after retries: user=%s | eventType=%s | transient=%s",
@@ -113,32 +116,32 @@ public class DBWriteConsumer {
     @Incoming("db-write-events-scheduler")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeScheduler(Message<String> message) {
-        return handleStringPayload(message, "scheduler", "consumeScheduler");
+        return handleStringPayload(message, "db-write-events-scheduler", "scheduler", "consumeScheduler");
     }
 
 
     @Incoming("db-write-events-scheduler-dr")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeSchedulerDr(Message<String> message) {
-        return handleStringPayload(message, "scheduler-dr", "consumeSchedulerDr");
+        return handleStringPayload(message, "db-write-events-scheduler-dr", "scheduler-dr", "consumeSchedulerDr");
     }
 
 
     @Incoming("db-write-events-dr")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeAndReplyDR(Message<String> message) {
-        return handleProvisioningMessage(message, "dc-provisioning");
+        return handleProvisioningMessage(message, "db-write-events-dr", "dc-provisioning");
     }
 
 
     @Incoming("db-write-events-dc")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeAndReplyDC(Message<String> message) {
-        return handleProvisioningMessage(message, "dr-provisioning");
+        return handleProvisioningMessage(message, "db-write-events-dc", "dr-provisioning");
     }
 
 
-    private Uni<Void> handleStringPayload(Message<String> message, String label, String method) {
+    private Uni<Void> handleStringPayload(Message<String> message, String channel, String label, String method) {
         IncomingKafkaRecordMetadata<?, ?> metadata = message.getMetadata(IncomingKafkaRecordMetadata.class).orElse(null);
         String headerTraceId = extractTraceHeader(metadata);
 
@@ -148,6 +151,7 @@ public class DBWriteConsumer {
         } catch (Exception e) {
             // Deserialization is a permanent failure: propagate so Smallrye routes the
             // raw bytes to the DLT instead of silently dropping them.
+            errorMetrics.recordDeserializationFailure(channel);
             String traceId = headerTraceId != null ? headerTraceId : TraceIdGenerator.generateTraceId();
             bindMdc(traceId, null);
             try {
@@ -172,7 +176,7 @@ public class DBWriteConsumer {
                 site, request.getEventType(), request.getTableName(), request.getUserName());
 
         DBWriteRequest finalRequest = request;
-        return executor.execute(request)
+        return executor.execute(channel, request)
                 .onItem().invoke(() -> incrementAndMaybeLog(method, label))
                 .onFailure().invoke(throwable -> LoggingUtil.logError(log, method, throwable,
                         "[%s] %s routing to DLT after retries: user=%s | eventType=%s | transient=%s",
@@ -182,7 +186,7 @@ public class DBWriteConsumer {
     }
 
 
-    private Uni<Void> handleProvisioningMessage(Message<String> message, String channelName) {
+    private Uni<Void> handleProvisioningMessage(Message<String> message, String channel, String channelName) {
         IncomingKafkaRecordMetadata<?, ?> metadata =
                 message.getMetadata(IncomingKafkaRecordMetadata.class).orElse(null);
         String headerTraceId = extractTraceHeader(metadata);
@@ -191,6 +195,7 @@ public class DBWriteConsumer {
         try {
             request = objectMapper.readValue(message.getPayload(), DBWriteRequest.class);
         } catch (Exception e) {
+            errorMetrics.recordDeserializationFailure(channel);
             String traceId = headerTraceId != null ? headerTraceId : TraceIdGenerator.generateTraceId();
             bindMdc(traceId, null);
             try {
@@ -226,7 +231,7 @@ public class DBWriteConsumer {
             LoggingUtil.logWarn(log, "handleProvisioningMessage",
                     "[%s] %s Missing reply headers — processing without reply for user: %s",
                     site, channelName, request.getUserName());
-            return executor.execute(request)
+            return executor.execute(channel, request)
                     .onFailure().invoke(throwable -> LoggingUtil.logError(log, "handleProvisioningMessage", throwable,
                             "[%s] %s routing to DLT (no reply headers) user=%s | eventType=%s | transient=%s",
                             site, channelName, finalRequest.getUserName(), finalRequest.getEventType(),
@@ -241,7 +246,7 @@ public class DBWriteConsumer {
 
         // Run the DB write through the resilience executor; only AFTER retries are exhausted
         // do we either reply FAIL to the caller and route the original record to the DLT.
-        return executor.execute(request)
+        return executor.execute(channel, request)
                 .onItem().invoke(() -> incrementAndMaybeLog("handleProvisioningMessage", channelName))
                 .onItem().transformToUni(v -> sendReply(replyTopic, correlationId, "SUCCESS"))
                 .onFailure().call(throwable -> {
