@@ -322,8 +322,3 @@ mp:
         bootstrap.servers: localhost:9092
         value.serializer: org.apache.kafka.common.serialization.StringSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
-
-      mysql-responses-out:
-        connector: smallrye-kafka
-        value.serializer: org.apache.kafka.common.serialization.StringSerializer
-        key.serializer: org.apache.kafka.common.serialization.StringSerializer
