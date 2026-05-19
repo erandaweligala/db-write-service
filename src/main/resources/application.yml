@@ -32,6 +32,16 @@ quarkus:
     reactive:
       url: oracle:thin:@localhost:1524/ORCL
 
+  # ---------------------------------------------------------------------------
+  # Named MySQL datasource
+  # ---------------------------------------------------------------------------
+    mysql:                                  # <-- named datasource key
+      db-kind: mysql
+      username: "${MYSQL_USER}"
+      password: "${MYSQL_PASSWORD}"
+      reactive:
+        url: mysql://mysql-host:3306/your_schema
+
   vertx:
     # High-TPS optimization: Match event loops to CPU cores for optimal performance
     event-loops-pool-size: 2
@@ -118,6 +128,19 @@ pool:
   pool-cleaner-enabled: true
   pool-cleaner-interval: 60000
 
+mysql-pool:
+  max-size: 50
+  connection-timeout: 5000
+  idle-timeout: 600000
+  max-lifetime: 1800000
+  prepared-statement-cache-max-size: 256
+  pipelining-enabled: true
+  pipelining-limit: 256
+  event-loop-size: 32
+  tcp-keep-alive: true
+  tcp-no-delay: true
+  pool-cleaner-enabled: true
+  pool-cleaner-interval: 60000
 
 app:
   site: DC
@@ -254,6 +277,41 @@ mp:
         dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
         dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
 
+      mysql-db-write-events-dc:
+        connector: smallrye-kafka
+        topic: ums-mysql-dc
+        group.id: spring-reply-group-ums-dc
+        value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: earliest
+        enable.auto.commit: false
+        max.poll.records: 50
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: dlt-ums-mysql-dc
+        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
+
+
+      mysql-db-write-events-dr:
+        connector: smallrye-kafka
+        topic: ums-mysql-dr
+        group.id: spring-reply-group-ums-dr
+        value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: earliest
+        enable.auto.commit: false
+        max.poll.records: 50
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: dlt-ums-mysql-dr
+        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
+
     # ------------------------------------------------
     # Outgoing: provisioning reply channel
     # Topic is set dynamically per-message via metadata.
@@ -262,5 +320,10 @@ mp:
       responses-out:
         connector: smallrye-kafka
         bootstrap.servers: localhost:9092
+        value.serializer: org.apache.kafka.common.serialization.StringSerializer
+        key.serializer: org.apache.kafka.common.serialization.StringSerializer
+
+      mysql-responses-out:
+        connector: smallrye-kafka
         value.serializer: org.apache.kafka.common.serialization.StringSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer

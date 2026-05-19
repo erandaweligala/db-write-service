@@ -127,7 +127,8 @@ public class DBWriteConsumer {
     @Incoming("db-write-events-dr")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeAndReplyDR(Message<String> message) {
-        return handleProvisioningMessage(message, "dc-provisioning");
+        //return handleProvisioningMessage(message, "dc-provisioning");
+        return handleStringPayload(message,"provisioning","dc-provisioning");
     }
 
 
@@ -206,41 +207,37 @@ public class DBWriteConsumer {
         request.setTraceId(traceId);
         bindMdc(traceId, request);
 
-        if (log.isDebugEnabled()) {
-            LoggingUtil.logDebug(log, "handleProvisioningMessage",
-                    "[%s] %s payload received user=%s eventType=%s",
-                    site, channelName, request.getUserName(), request.getEventType());
-            if (metadata != null) {
-                metadata.getHeaders().forEach(h ->
-                        LoggingUtil.logDebug(log, "handleProvisioningMessage", "[%s] %s Header: %s = %s",
-                                site, channelName, h.key(), new String(h.value(), StandardCharsets.UTF_8)));
-            }
-        }
-
         Header correlationHeader = metadata != null ? metadata.getHeaders().lastHeader("kafka_correlationId") : null;
         Header replyTopicHeader  = metadata != null ? metadata.getHeaders().lastHeader("kafka_replyTopic") : null;
+        String replyTopic        = replyTopicHeader != null
+                ? new String(replyTopicHeader.value(), StandardCharsets.UTF_8) : null;
+
+        // Reply only if the replyTopic belongs to this cluster.
+        // On the mirrored side the header is present but points to the other
+        // cluster's topic — isReplyTopicLocal() returns false and we skip the reply.
+        boolean shouldReply = correlationHeader != null && isReplyTopicLocal(replyTopic);
 
         DBWriteRequest finalRequest = request;
 
-        if (correlationHeader == null || replyTopicHeader == null) {
-            LoggingUtil.logWarn(log, "handleProvisioningMessage",
-                    "[%s] %s Missing reply headers — processing without reply for user: %s",
-                    site, channelName, request.getUserName());
+        if (!shouldReply) {
+            LoggingUtil.logInfo(log, "handleProvisioningMessage",
+                    "[%s] %s replyTopic=%s not local — DB write only for user=%s",
+                    site, channelName, replyTopic, request.getUserName());
             return executor.execute(request)
-                    .onFailure().invoke(throwable -> LoggingUtil.logError(log, "handleProvisioningMessage", throwable,
-                            "[%s] %s routing to DLT (no reply headers) user=%s | eventType=%s | transient=%s",
+                    .onFailure().invoke(t -> LoggingUtil.logError(log, "handleProvisioningMessage", t,
+                            "[%s] %s routing to DLT (no local reply) user=%s | eventType=%s | transient=%s",
                             site, channelName, finalRequest.getUserName(), finalRequest.getEventType(),
-                            KafkaFailureClassifier.isTransient(throwable)))
+                            KafkaFailureClassifier.isTransient(t)))
+                    .onFailure().recoverWithItem((Void) null)   // ← was missing before
                     .eventually((Runnable) DBWriteConsumer::clearMdc);
         }
 
+        // Local reply path — only reached on the cluster that owns this replyTopic
         byte[] correlationId = correlationHeader.value();
-        String replyTopic    = new String(replyTopicHeader.value(), StandardCharsets.UTF_8);
         LoggingUtil.logDebug(log, "handleProvisioningMessage",
-                "[%s] %s Reply topic: %s", site, channelName, replyTopic);
+                "[%s] %s reply target confirmed: %s user=%s",
+                site, channelName, replyTopic, request.getUserName());
 
-        // Run the DB write through the resilience executor; only AFTER retries are exhausted
-        // do we either reply FAIL to the caller and route the original record to the DLT.
         return executor.execute(request)
                 .onItem().invoke(() -> incrementAndMaybeLog("handleProvisioningMessage", channelName))
                 .onItem().transformToUni(v -> sendReply(replyTopic, correlationId, "SUCCESS"))
@@ -253,6 +250,10 @@ public class DBWriteConsumer {
                             .onFailure().recoverWithItem((Void) null);
                 })
                 .eventually((Runnable) DBWriteConsumer::clearMdc);
+    }
+
+    private boolean isReplyTopicLocal(String replyTopic) {
+        return replyTopic != null && replyTopic.toLowerCase().endsWith("-" + site.toLowerCase());
     }
 
     private Uni<Void> sendReply(String replyTopic, byte[] correlationId, String payload) {
