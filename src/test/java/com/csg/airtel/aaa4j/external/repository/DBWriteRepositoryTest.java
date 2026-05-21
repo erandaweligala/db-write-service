@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.external.repository;
 
 
+import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.infrastructure.DatabaseCircuitBreaker;
 import com.csg.airtel.aaa4j.infrastructure.PerformanceMetrics;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -44,8 +45,10 @@ class DBWriteRepositoryTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         circuitBreaker = new DatabaseCircuitBreaker();
-        metrics = new PerformanceMetrics(new SimpleMeterRegistry());
-        repository = new DBWriteRepository(mockPool, circuitBreaker, metrics);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        metrics = new PerformanceMetrics(registry);
+        ExceptionMetricsService exceptionMetrics = new ExceptionMetricsService(registry);
+        repository = new DBWriteRepository(mockPool, circuitBreaker, metrics, exceptionMetrics);
     }
 
     @Test

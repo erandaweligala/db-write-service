@@ -2,6 +2,7 @@ package com.csg.airtel.aaa4j.external.repository;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.application.config.MySQLClient;
+import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.infrastructure.DatabaseCircuitBreaker;
 import com.csg.airtel.aaa4j.infrastructure.PerformanceMetrics;
 import io.smallrye.mutiny.Uni;
@@ -75,14 +76,17 @@ public class MySQLWriteRepository {
     final Pool client;
     final DatabaseCircuitBreaker circuitBreaker;
     final PerformanceMetrics metrics;
+    final ExceptionMetricsService exceptionMetrics;
 
     @Inject
     public MySQLWriteRepository(@MySQLClient Pool client,
                                 DatabaseCircuitBreaker circuitBreaker,
-                                PerformanceMetrics metrics) {
+                                PerformanceMetrics metrics,
+                                ExceptionMetricsService exceptionMetrics) {
         this.client = client;
         this.circuitBreaker = circuitBreaker;
         this.metrics = metrics;
+        this.exceptionMetrics = exceptionMetrics;
     }
 
     // =========================================================================
@@ -144,6 +148,9 @@ public class MySQLWriteRepository {
                 .onFailure().invoke(t -> {
                     metrics.recordDbUpdateFailure();
                     circuitBreaker.recordFailure();
+                    exceptionMetrics.recordException(t,
+                            ExceptionMetricsService.Layer.REPOSITORY,
+                            ExceptionMetricsService.Source.MYSQL);
                     LoggingUtil.logError(log, "update", t,
                             "[MySQL] Update failed on table: %s", tableName);
                 });
@@ -269,6 +276,9 @@ public class MySQLWriteRepository {
                     // Only non-duplicate failures reach here
                     metrics.recordDbUpdateFailure();
                     circuitBreaker.recordFailure();
+                    exceptionMetrics.recordException(t,
+                            ExceptionMetricsService.Layer.REPOSITORY,
+                            ExceptionMetricsService.Source.MYSQL);
                     LoggingUtil.logError(log, "executeInsert", t,
                             "[MySQL] Insert failed on table: %s", tableName);
                 });
@@ -337,6 +347,9 @@ public class MySQLWriteRepository {
                 .onFailure().invoke(t -> {
                     metrics.recordDbUpdateFailure();
                     circuitBreaker.recordFailure();
+                    exceptionMetrics.recordException(t,
+                            ExceptionMetricsService.Layer.REPOSITORY,
+                            ExceptionMetricsService.Source.MYSQL);
                     LoggingUtil.logError(log, "executeDelete", t,
                             "[MySQL] Delete failed on table: %s", tableName);
                 });
@@ -436,6 +449,9 @@ public class MySQLWriteRepository {
                 .onFailure().invoke(t -> {
                     metrics.recordDbUpdateFailure();
                     circuitBreaker.recordFailure();
+                    exceptionMetrics.recordException(t,
+                            ExceptionMetricsService.Layer.REPOSITORY,
+                            ExceptionMetricsService.Source.MYSQL);
                     LoggingUtil.logError(log, "executeNativeQuery", t,
                             "[MySQL] Native query failed");
                 });

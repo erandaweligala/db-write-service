@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.application.controller;
 
+import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.infrastructure.DatabaseCircuitBreaker;
 import com.csg.airtel.aaa4j.infrastructure.PerformanceMetrics;
 import jakarta.inject.Inject;
@@ -26,6 +27,9 @@ public class PerformanceMonitoringResource {
 
     @Inject
     DatabaseCircuitBreaker circuitBreaker;
+
+    @Inject
+    ExceptionMetricsService exceptionMetrics;
 
     /**
      * Get current performance metrics
@@ -81,6 +85,21 @@ public class PerformanceMonitoringResource {
         response.put("status", "success");
         response.put("message", "Circuit breaker has been reset to CLOSED state");
 
+        return response;
+    }
+
+    /**
+     * Snapshot of application exception counts aggregated by root-cause type.
+     * Returns {@code exceptionType -> {count, percentage, dailyCount}} sorted
+     * by descending count. Backed by {@link ExceptionMetricsService}.
+     */
+    @GET
+    @Path("/exceptions")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, Object> getExceptionStats() {
+        Map<String, Object> response = new HashMap<>();
+        response.put("total", exceptionMetrics.getTotalRootCount());
+        response.put("byType", exceptionMetrics.snapshot());
         return response;
     }
 
