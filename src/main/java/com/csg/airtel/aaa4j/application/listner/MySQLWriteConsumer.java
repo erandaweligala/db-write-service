@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.application.listner;
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.application.common.TraceIdGenerator;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequestMySQL;
+import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.domain.service.MySQLWriteService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.smallrye.mutiny.Uni;
@@ -48,14 +49,17 @@ public class MySQLWriteConsumer {
     private static final String HEADER_TRACE_ID = "traceId";
 
     private final MySQLWriteService mysqlWriteService;
+    private final ExceptionMetricsService exceptionMetrics;
     private final AtomicInteger processedCounter = new AtomicInteger(0);
 
     @Inject
     ObjectMapper objectMapper;
 
     @Inject
-    public MySQLWriteConsumer(MySQLWriteService mysqlWriteService) {
+    public MySQLWriteConsumer(MySQLWriteService mysqlWriteService,
+                              ExceptionMetricsService exceptionMetrics) {
         this.mysqlWriteService = mysqlWriteService;
+        this.exceptionMetrics = exceptionMetrics;
     }
 
     // =========================================================================
@@ -96,6 +100,9 @@ public class MySQLWriteConsumer {
             String traceId = headerTraceId != null ? headerTraceId : TraceIdGenerator.generateTraceId();
             bindMdc(traceId, null);
             try {
+                exceptionMetrics.recordException(e,
+                        ExceptionMetricsService.Layer.CONSUMER,
+                        ExceptionMetricsService.Source.KAFKA);
                 LoggingUtil.logError(log, "handleMessage", e,
                         "[MySQL][%s] Failed to deserialize payload — routing to DLT", label);
             } finally {
@@ -110,11 +117,15 @@ public class MySQLWriteConsumer {
 
         return mysqlWriteService.processEvent(request)
                 .onItem().invoke(() -> incrementAndLog(label))
-                .onFailure().invoke(t ->
-                        LoggingUtil.logError(log, "handleMessage", t,
-                                "[MySQL][%s] Write failed for user: %s | eventType: %s | table: %s",
-                                label, request.getUserName(), request.getEventType(),
-                                request.getTableName()))
+                .onFailure().invoke(t -> {
+                    exceptionMetrics.recordException(t,
+                            ExceptionMetricsService.Layer.CONSUMER,
+                            ExceptionMetricsService.Source.KAFKA);
+                    LoggingUtil.logError(log, "handleMessage", t,
+                            "[MySQL][%s] Write failed for user: %s | eventType: %s | table: %s",
+                            label, request.getUserName(), request.getEventType(),
+                            request.getTableName());
+                })
                 // Swallow failure — log it, acknowledge the message, avoid partition stall.
                 // A DLT will capture terminal failures via the failure-strategy config.
                 .onFailure().recoverWithItem((Void) null);

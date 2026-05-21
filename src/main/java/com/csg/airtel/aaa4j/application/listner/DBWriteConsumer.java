@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.application.listner;
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.application.common.TraceIdGenerator;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
+import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.infrastructure.KafkaFailureClassifier;
 import com.csg.airtel.aaa4j.infrastructure.ResilientDbWriteExecutor;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,6 +33,7 @@ public class DBWriteConsumer {
     private static final String HEADER_TRACE_ID = "traceId";
 
     private final ResilientDbWriteExecutor executor;
+    private final ExceptionMetricsService exceptionMetrics;
     private final AtomicInteger processedCounter = new AtomicInteger(0);
 
     @ConfigProperty(name = "app.site", defaultValue = "DC")
@@ -45,8 +47,10 @@ public class DBWriteConsumer {
     MutinyEmitter<String> replyEmitter;
 
     @Inject
-    public DBWriteConsumer(ResilientDbWriteExecutor executor) {
+    public DBWriteConsumer(ResilientDbWriteExecutor executor,
+                           ExceptionMetricsService exceptionMetrics) {
         this.executor = executor;
+        this.exceptionMetrics = exceptionMetrics;
     }
 
     /**
@@ -72,10 +76,15 @@ public class DBWriteConsumer {
 
         return executor.execute(request)
                 .onItem().invoke(() -> incrementAndMaybeLog("consumeAccountingEvent", "DC-DR"))
-                .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeAccountingEvent", throwable,
-                        "[%s] DC-DR routing to DLT after retries: user=%s | eventType=%s | transient=%s",
-                        site, request.getUserName(), request.getEventType(),
-                        KafkaFailureClassifier.isTransient(throwable)))
+                .onFailure().invoke(throwable -> {
+                    exceptionMetrics.recordException(throwable,
+                            ExceptionMetricsService.Layer.CONSUMER,
+                            ExceptionMetricsService.Source.KAFKA);
+                    LoggingUtil.logError(log, "consumeAccountingEvent", throwable,
+                            "[%s] DC-DR routing to DLT after retries: user=%s | eventType=%s | transient=%s",
+                            site, request.getUserName(), request.getEventType(),
+                            KafkaFailureClassifier.isTransient(throwable));
+                })
                 .eventually((Runnable) DBWriteConsumer::clearMdc);
     }
 
@@ -102,10 +111,15 @@ public class DBWriteConsumer {
 
         return executor.execute(request)
                 .onItem().invoke(() -> incrementAndMaybeLog("consumeReverseAccountingEvent", "DR-DC"))
-                .onFailure().invoke(throwable -> LoggingUtil.logError(log, "consumeReverseAccountingEvent", throwable,
-                        "[%s] DR-DC routing to DLT after retries: user=%s | eventType=%s | transient=%s",
-                        site, request.getUserName(), request.getEventType(),
-                        KafkaFailureClassifier.isTransient(throwable)))
+                .onFailure().invoke(throwable -> {
+                    exceptionMetrics.recordException(throwable,
+                            ExceptionMetricsService.Layer.CONSUMER,
+                            ExceptionMetricsService.Source.KAFKA);
+                    LoggingUtil.logError(log, "consumeReverseAccountingEvent", throwable,
+                            "[%s] DR-DC routing to DLT after retries: user=%s | eventType=%s | transient=%s",
+                            site, request.getUserName(), request.getEventType(),
+                            KafkaFailureClassifier.isTransient(throwable));
+                })
                 .eventually((Runnable) DBWriteConsumer::clearMdc);
     }
 
@@ -152,6 +166,9 @@ public class DBWriteConsumer {
             String traceId = headerTraceId != null ? headerTraceId : TraceIdGenerator.generateTraceId();
             bindMdc(traceId, null);
             try {
+                exceptionMetrics.recordException(e,
+                        ExceptionMetricsService.Layer.CONSUMER,
+                        ExceptionMetricsService.Source.KAFKA);
                 LoggingUtil.logError(log, method, e,
                         "[%s] %s failed to deserialize payload — routing to DLT", site, label);
             } finally {
@@ -175,10 +192,15 @@ public class DBWriteConsumer {
         DBWriteRequest finalRequest = request;
         return executor.execute(request)
                 .onItem().invoke(() -> incrementAndMaybeLog(method, label))
-                .onFailure().invoke(throwable -> LoggingUtil.logError(log, method, throwable,
-                        "[%s] %s routing to DLT after retries: user=%s | eventType=%s | transient=%s",
-                        site, label, finalRequest.getUserName(), finalRequest.getEventType(),
-                        KafkaFailureClassifier.isTransient(throwable)))
+                .onFailure().invoke(throwable -> {
+                    exceptionMetrics.recordException(throwable,
+                            ExceptionMetricsService.Layer.CONSUMER,
+                            ExceptionMetricsService.Source.KAFKA);
+                    LoggingUtil.logError(log, method, throwable,
+                            "[%s] %s routing to DLT after retries: user=%s | eventType=%s | transient=%s",
+                            site, label, finalRequest.getUserName(), finalRequest.getEventType(),
+                            KafkaFailureClassifier.isTransient(throwable));
+                })
                 .eventually((Runnable) DBWriteConsumer::clearMdc);
     }
 
@@ -195,6 +217,9 @@ public class DBWriteConsumer {
             String traceId = headerTraceId != null ? headerTraceId : TraceIdGenerator.generateTraceId();
             bindMdc(traceId, null);
             try {
+                exceptionMetrics.recordException(e,
+                        ExceptionMetricsService.Layer.CONSUMER,
+                        ExceptionMetricsService.Source.KAFKA);
                 LoggingUtil.logError(log, "handleProvisioningMessage", e,
                         "[%s] %s failed to deserialize payload — routing to DLT", site, channelName);
             } finally {
@@ -224,10 +249,15 @@ public class DBWriteConsumer {
                     "[%s] %s replyTopic=%s not local — DB write only for user=%s",
                     site, channelName, replyTopic, request.getUserName());
             return executor.execute(request)
-                    .onFailure().invoke(t -> LoggingUtil.logError(log, "handleProvisioningMessage", t,
-                            "[%s] %s routing to DLT (no local reply) user=%s | eventType=%s | transient=%s",
-                            site, channelName, finalRequest.getUserName(), finalRequest.getEventType(),
-                            KafkaFailureClassifier.isTransient(t)))
+                    .onFailure().invoke(t -> {
+                        exceptionMetrics.recordException(t,
+                                ExceptionMetricsService.Layer.CONSUMER,
+                                ExceptionMetricsService.Source.KAFKA);
+                        LoggingUtil.logError(log, "handleProvisioningMessage", t,
+                                "[%s] %s routing to DLT (no local reply) user=%s | eventType=%s | transient=%s",
+                                site, channelName, finalRequest.getUserName(), finalRequest.getEventType(),
+                                KafkaFailureClassifier.isTransient(t));
+                    })
                     .onFailure().recoverWithItem((Void) null)   // ← was missing before
                     .eventually((Runnable) DBWriteConsumer::clearMdc);
         }
@@ -242,6 +272,9 @@ public class DBWriteConsumer {
                 .onItem().invoke(() -> incrementAndMaybeLog("handleProvisioningMessage", channelName))
                 .onItem().transformToUni(v -> sendReply(replyTopic, correlationId, "SUCCESS"))
                 .onFailure().call(throwable -> {
+                    exceptionMetrics.recordException(throwable,
+                            ExceptionMetricsService.Layer.CONSUMER,
+                            ExceptionMetricsService.Source.KAFKA);
                     LoggingUtil.logError(log, "handleProvisioningMessage", throwable,
                             "[%s] %s routing to DLT after retries: user=%s | eventType=%s | transient=%s",
                             site, channelName, finalRequest.getUserName(), finalRequest.getEventType(),

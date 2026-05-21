@@ -95,6 +95,11 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-micrometer-registry-prometheus</artifactId>
         </dependency>
+        <!-- Scheduler for periodic exception-metric maintenance tasks -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-scheduler</artifactId>
+        </dependency>
         <!-- SmallRye Health for health checks -->
         <dependency>
             <groupId>io.quarkus</groupId>

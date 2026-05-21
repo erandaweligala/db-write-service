@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.external.repository;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
+import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.infrastructure.DatabaseCircuitBreaker;
 import com.csg.airtel.aaa4j.infrastructure.PerformanceMetrics;
 import io.smallrye.mutiny.Uni;
@@ -31,12 +32,17 @@ public class DBWriteRepository {
     final Pool client;
     final DatabaseCircuitBreaker circuitBreaker;
     final PerformanceMetrics metrics;
+    final ExceptionMetricsService exceptionMetrics;
 
     @Inject
-    public DBWriteRepository(Pool client, DatabaseCircuitBreaker circuitBreaker, PerformanceMetrics metrics) {
+    public DBWriteRepository(Pool client,
+                             DatabaseCircuitBreaker circuitBreaker,
+                             PerformanceMetrics metrics,
+                             ExceptionMetricsService exceptionMetrics) {
         this.client = client;
         this.circuitBreaker = circuitBreaker;
         this.metrics = metrics;
+        this.exceptionMetrics = exceptionMetrics;
     }
 
     // -----------------------------------------------------------------------
@@ -86,6 +92,9 @@ public class DBWriteRepository {
                 .onFailure().invoke(throwable -> {
                     metrics.recordDbUpdateFailure();
                     circuitBreaker.recordFailure();
+                    exceptionMetrics.recordException(throwable,
+                            ExceptionMetricsService.Layer.REPOSITORY,
+                            ExceptionMetricsService.Source.ORACLE);
                     LoggingUtil.logError(log, "update", throwable, "Update failed: %s", tableName);
                 });
     }
@@ -207,6 +216,9 @@ public class DBWriteRepository {
                     // Only non-duplicate failures reach here
                     metrics.recordDbUpdateFailure();
                     circuitBreaker.recordFailure();
+                    exceptionMetrics.recordException(throwable,
+                            ExceptionMetricsService.Layer.REPOSITORY,
+                            ExceptionMetricsService.Source.ORACLE);
                     LoggingUtil.logError(log, "executeInsert", throwable, "Insert failed on table: %s", tableName);
                 });
     }
@@ -270,6 +282,9 @@ public class DBWriteRepository {
                 .onFailure().invoke(throwable -> {
                     metrics.recordDbUpdateFailure();
                     circuitBreaker.recordFailure();
+                    exceptionMetrics.recordException(throwable,
+                            ExceptionMetricsService.Layer.REPOSITORY,
+                            ExceptionMetricsService.Source.ORACLE);
                     LoggingUtil.logError(log, "executeDelete", throwable, "Delete failed on table: %s", tableName);
                 });
     }

@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.infrastructure;
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.service.DBWriteService;
+import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -36,6 +37,7 @@ public class ResilientDbWriteExecutor {
 
     private final DBWriteService dbWriteService;
     private final DatabaseCircuitBreaker circuitBreaker;
+    private final ExceptionMetricsService exceptionMetrics;
 
     @ConfigProperty(name = "db.retry.attempts", defaultValue = "5")
     int retryAttempts;
@@ -48,9 +50,11 @@ public class ResilientDbWriteExecutor {
 
     @Inject
     public ResilientDbWriteExecutor(DBWriteService dbWriteService,
-                                    DatabaseCircuitBreaker circuitBreaker) {
+                                    DatabaseCircuitBreaker circuitBreaker,
+                                    ExceptionMetricsService exceptionMetrics) {
         this.dbWriteService = dbWriteService;
         this.circuitBreaker = circuitBreaker;
+        this.exceptionMetrics = exceptionMetrics;
     }
 
     /**
@@ -79,6 +83,9 @@ public class ResilientDbWriteExecutor {
                 .withJitter(0.2)
                 .atMost(retryAttempts)
                 .onFailure().invoke(t -> {
+                    exceptionMetrics.recordException(t,
+                            ExceptionMetricsService.Layer.INFRASTRUCTURE,
+                            ExceptionMetricsService.Source.ORACLE);
                     if (KafkaFailureClassifier.isTransient(t)) {
                         LoggingUtil.logError(log, "execute", t,
                                 "DB write FAILED after %d retries — message will go to DLT (user=%s, table=%s, eventType=%s)",
