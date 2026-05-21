@@ -12,12 +12,12 @@ quarkus:
       url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
       driver: oracle.jdbc.OracleDriver
 
-  mysql:
-    db-kind: mysql
-    username: authuser
-    password: authuser@123
-    reactive:
-      url: mysql://mysql.elasti.svc.cluster.local:3306/adauth?createDatabaseIfNotExist=true&serverTimezone=UTC
+    mysql:
+      db-kind: mysql
+      username: authuser
+      password: authuser@123
+      reactive:
+        url: mysql://mysql.elasti.svc.cluster.local:3306/adauth?createDatabaseIfNotExist=true&serverTimezone=UTC
 
 
   console:
@@ -94,7 +94,7 @@ mysql-pool:
 # =========================
 # Override with app.site=DR for DR-site deployment
 app:
-  site: DC
+  site: AWS
 
 # Kafka Configuration
 
@@ -186,8 +186,8 @@ mp:
 
       mysql-db-write-events-dc:
         connector: smallrye-kafka
-        topic: ums-mysql-dc
-        group.id: spring-reply-group-ums-dc
+        topic: ums-mysql-aws
+        group.id: spring-reply-group-ums
         value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
@@ -197,7 +197,7 @@ mp:
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
         failure-strategy: dead-letter-queue
-        dead-letter-queue.topic: dlt-ums-mysql-dc
+        dead-letter-queue.topic: dlt-ums-mysql-aws
         dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
         dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
 
