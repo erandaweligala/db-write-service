@@ -124,8 +124,9 @@ mp:
         topic: DC-DR
         group:
           id: accounting-dc-group
-        value:
-          deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
+        # value.deserializer intentionally omitted: Quarkus derives it from the
+        # @Incoming payload type. The base ObjectMapperDeserializer has no no-arg
+        # constructor and cannot be referenced directly (would need a typed subclass).
         key:
           deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto:
@@ -159,8 +160,9 @@ mp:
         topic: DR-DC
         group:
           id: accounting-dr-group
-        value:
-          deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
+        # value.deserializer intentionally omitted: Quarkus derives it from the
+        # @Incoming payload type. The base ObjectMapperDeserializer has no no-arg
+        # constructor and cannot be referenced directly (would need a typed subclass).
         key:
           deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto:
