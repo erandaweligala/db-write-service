@@ -109,120 +109,232 @@ db:
     initial-backoff-ms: 200
     max-backoff-ms: 5000
 
+# ============================================================
+# KAFKA REACTIVE MESSAGING (telco_aaa_dev profile)
+# ============================================================
+# Every dotted Kafka key is written as NESTED YAML (one indent per dot).
+# Literal dotted keys (e.g. `group.id:`) do NOT bind under a channel node.
+# Each incoming channel has its own unique group.id.
 mp:
   messaging:
     incoming:
-      # DC→DR accounting channel
+      # DC->DR accounting channel (topic: DC-DR)
       db-write-events:
         connector: smallrye-kafka
         topic: DC-DR
-        group.id: accounting-dc-group
-        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
-        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        auto.offset.reset: earliest
-        enable.auto.commit: false
-        max.poll.records: 100
-        max.poll.interval.ms: 10000
-        session.timeout.ms: 10000
-        heartbeat.interval.ms: 3000
+        group:
+          id: accounting-dc-group
+        # value.deserializer intentionally omitted: Quarkus derives it from the
+        # @Incoming payload type. The base ObjectMapperDeserializer has no no-arg
+        # constructor and cannot be referenced directly (would need a typed subclass).
+        key:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto:
+          offset:
+            reset: earliest
+        enable:
+          auto:
+            commit: false
+        max:
+          poll:
+            records: 100
+            interval:
+              ms: 10000
+        session:
+          timeout:
+            ms: 10000
+        heartbeat:
+          interval:
+            ms: 3000
         failure-strategy: dead-letter-queue
-        dead-letter-queue.topic: DC-DR-DLT
-        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
-        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+        dead-letter-queue:
+          topic: DC-DR-DLT
+          key:
+            serializer: org.apache.kafka.common.serialization.StringSerializer
+          value:
+            serializer: org.apache.kafka.common.serialization.ByteArraySerializer
 
-      # DR→DC accounting channel (reverse direction)
+      # DR->DC accounting channel, reverse (topic: DR-DC)
       db-write-events-reverse:
         connector: smallrye-kafka
         topic: DR-DC
-        group.id: accounting-dr-group
-        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
-        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        auto.offset.reset: earliest
-        enable.auto.commit: false
-        max.poll.records: 100
-        max.poll.interval.ms: 10000
-        session.timeout.ms: 10000
-        heartbeat.interval.ms: 3000
+        group:
+          id: accounting-dr-group
+        # value.deserializer intentionally omitted: Quarkus derives it from the
+        # @Incoming payload type. The base ObjectMapperDeserializer has no no-arg
+        # constructor and cannot be referenced directly (would need a typed subclass).
+        key:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto:
+          offset:
+            reset: earliest
+        enable:
+          auto:
+            commit: false
+        max:
+          poll:
+            records: 100
+            interval:
+              ms: 10000
+        session:
+          timeout:
+            ms: 10000
+        heartbeat:
+          interval:
+            ms: 3000
         failure-strategy: dead-letter-queue
-        dead-letter-queue.topic: DR-DC-DLT
-        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
-        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+        dead-letter-queue:
+          topic: DR-DC-DLT
+          key:
+            serializer: org.apache.kafka.common.serialization.StringSerializer
+          value:
+            serializer: org.apache.kafka.common.serialization.ByteArraySerializer
 
-      # DC→DR provisioning channel (request-reply)
+      # DC->DR provisioning channel, request-reply (topic: dc-provisioning)
       db-write-events-dr:
         connector: smallrye-kafka
         topic: dc-provisioning
-        group.id: provisioning-reply-group
-        value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        auto.offset.reset: earliest
-        enable.auto.commit: false
-        max.poll.records: 100
-        max.poll.interval.ms: 300000
-        session.timeout.ms: 30000
-        heartbeat.interval.ms: 10000
+        group:
+          id: provisioning-reply-group
+        value:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        key:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto:
+          offset:
+            reset: earliest
+        enable:
+          auto:
+            commit: false
+        max:
+          poll:
+            records: 100
+            interval:
+              ms: 300000
+        session:
+          timeout:
+            ms: 30000
+        heartbeat:
+          interval:
+            ms: 10000
         failure-strategy: dead-letter-queue
-        dead-letter-queue.topic: dc-provisioning-DLT
-        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
-        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue:
+          topic: dc-provisioning-DLT
+          key:
+            serializer: org.apache.kafka.common.serialization.StringSerializer
+          value:
+            serializer: org.apache.kafka.common.serialization.StringSerializer
 
-      # DR→DC provisioning channel (reverse request-reply)
+      # DR->DC provisioning channel, reverse request-reply (topic: dr-provisioning)
       db-write-events-dc:
         connector: smallrye-kafka
         topic: dr-provisioning
-        group.id: provisioning-reply-dc-group
-        value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        auto.offset.reset: earliest
-        enable.auto.commit: false
-        max.poll.records: 100
-        max.poll.interval.ms: 300000
-        session.timeout.ms: 30000
-        heartbeat.interval.ms: 10000
+        group:
+          id: provisioning-reply-dc-group
+        value:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        key:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto:
+          offset:
+            reset: earliest
+        enable:
+          auto:
+            commit: false
+        max:
+          poll:
+            records: 100
+            interval:
+              ms: 300000
+        session:
+          timeout:
+            ms: 30000
+        heartbeat:
+          interval:
+            ms: 10000
         failure-strategy: dead-letter-queue
-        dead-letter-queue.topic: dr-provisioning-DLT
-        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
-        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue:
+          topic: dr-provisioning-DLT
+          key:
+            serializer: org.apache.kafka.common.serialization.StringSerializer
+          value:
+            serializer: org.apache.kafka.common.serialization.StringSerializer
 
+      # UMS MySQL DC channel (topic: ums-mysql-aws in this profile)
       mysql-db-write-events-dc:
         connector: smallrye-kafka
         topic: ums-mysql-aws
-        group.id: spring-reply-group-ums
-        value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        auto.offset.reset: earliest
-        enable.auto.commit: false
-        max.poll.records: 50
-        max.poll.interval.ms: 300000
-        session.timeout.ms: 30000
-        heartbeat.interval.ms: 10000
+        group:
+          id: spring-reply-group-ums
+        value:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        key:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto:
+          offset:
+            reset: earliest
+        enable:
+          auto:
+            commit: false
+        max:
+          poll:
+            records: 50
+            interval:
+              ms: 300000
+        session:
+          timeout:
+            ms: 30000
+        heartbeat:
+          interval:
+            ms: 10000
         failure-strategy: dead-letter-queue
-        dead-letter-queue.topic: dlt-ums-mysql-aws
-        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
-        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue:
+          topic: dlt-ums-mysql-aws
+          key:
+            serializer: org.apache.kafka.common.serialization.StringSerializer
+          value:
+            serializer: org.apache.kafka.common.serialization.StringSerializer
 
-
+      # UMS MySQL DR channel (topic: ums-mysql-dr)
       mysql-db-write-events-dr:
         connector: smallrye-kafka
         topic: ums-mysql-dr
-        group.id: spring-reply-group-ums-dr
-        value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        auto.offset.reset: earliest
-        enable.auto.commit: false
-        max.poll.records: 50
-        max.poll.interval.ms: 300000
-        session.timeout.ms: 30000
-        heartbeat.interval.ms: 10000
+        group:
+          id: spring-reply-group-ums-dr
+        value:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        key:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto:
+          offset:
+            reset: earliest
+        enable:
+          auto:
+            commit: false
+        max:
+          poll:
+            records: 50
+            interval:
+              ms: 300000
+        session:
+          timeout:
+            ms: 30000
+        heartbeat:
+          interval:
+            ms: 10000
         failure-strategy: dead-letter-queue
-        dead-letter-queue.topic: dlt-ums-mysql-dr
-        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
-        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
-
+        dead-letter-queue:
+          topic: dlt-ums-mysql-dr
+          key:
+            serializer: org.apache.kafka.common.serialization.StringSerializer
+          value:
+            serializer: org.apache.kafka.common.serialization.StringSerializer
 
     # Outgoing: provisioning reply channel (topic set dynamically per-message)
     outgoing:
       responses-out:
         connector: smallrye-kafka
-        value.serializer: org.apache.kafka.common.serialization.StringSerializer
-        key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        value:
+          serializer: org.apache.kafka.common.serialization.StringSerializer
+        key:
+          serializer: org.apache.kafka.common.serialization.StringSerializer
