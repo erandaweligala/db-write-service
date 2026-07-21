@@ -66,6 +66,30 @@ Both are tagged with:
 
 The counters are incremented at each consumer's terminal-failure boundary (after `ResilientDbWriteExecutor` has exhausted its retries). The same numbers are available as JSON at **`GET /api/monitoring/dlq`** and summarized under `dlq` in **`GET /api/monitoring/summary`**.
 
+### Reprocess (replay) outcomes
+
+Once records are sitting in a DLT they can be replayed back through the DB-write path (see [§6](#6-dlq-reprocessing-replay)). Each replayed record is counted:
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `kafka_dlq_reprocess_total` | counter | DLQ records handled by the reprocessor, tagged by `topic` and `outcome`. |
+
+`outcome` values (bounded cardinality):
+
+- `succeeded` — replayed to the DB successfully; removed from the DLT.
+- `requeued` — replay failed but attempts remain; re-published to the same DLT (attempt+1) for a later run.
+- `parked` — replay failed with the attempt budget spent, or the payload was unparseable; moved to `<topic><parked-suffix>` (default `.PARKED`) for manual triage.
+
+```promql
+# Reprocess throughput by outcome
+sum by (outcome) (rate(kafka_dlq_reprocess_total[5m]))
+
+# Anything landing in the parked topics is stuck and needs a human
+sum by (topic) (increase(kafka_dlq_reprocess_total{outcome="parked"}[1h]))
+```
+
+The same numbers appear under `reprocess` / `reprocessTotal` in **`GET /api/monitoring/dlq`**.
+
 ### PromQL
 
 ```promql
@@ -162,3 +186,58 @@ groups:
 3. Select your Prometheus data source when prompted (`DS_PROMETHEUS`).
 
 The dashboard has a `channel` template variable (populated from `kafka_dlq_events_total`) so you can scope the DLQ panels to a single channel.
+
+---
+
+## 6. DLQ reprocessing (replay)
+
+Dead-lettering preserves the payload; it does not recover it. The **reprocessor** replays the records sitting in the dead-letter topics back through the same resilient DB-write path (`ResilientDbWriteExecutor` → circuit breaker → in-app retry) so that records dead-lettered during a DB outage — or by a since-fixed bug — are written without data loss.
+
+### How it works
+
+A run is a **bounded, explicitly-triggered drain** of one DLT (not a standing consumer, which would tight-loop on a genuine poison message):
+
+1. Snapshot the topic's end-offsets, then read up to `max-messages` records that existed when the run started.
+2. Replay each record. Then:
+   - **success** → the consumer offset is committed (record gone from the DLT);
+   - **failure, attempts remain** → the original record (payload + headers) is re-published to the same DLT with an incremented `x-dlq-reprocess-attempts` header, for a later run;
+   - **failure, attempts exhausted** (or an unparseable payload) → the record is moved to the parked topic `<topic><parked-suffix>` for manual triage.
+3. Commits are capped at the run's starting end-offsets, so records re-queued *during* a run are never re-processed until the next run, and nothing is ever committed away without first being replayed, re-queued, or parked.
+
+Only the DLTs that carry a `DBWriteRequest` payload are eligible (the accounting and provisioning channels). The UMS/MySQL DLTs belong to a different service and are intentionally excluded.
+
+### Triggering
+
+| Endpoint | Purpose |
+|---|---|
+| `GET  /api/dlq/topics` | List the configured (reprocess-able) DLTs and the current reprocess total. |
+| `POST /api/dlq/reprocess/{topic}?max=N` | Drain one DLT (`max` optional; `0`/omitted uses the configured default). |
+| `POST /api/dlq/reprocess-all?max=N` | Drain every configured DLT in sequence. |
+
+```bash
+# See what can be replayed
+curl -s http://localhost:8085/api/dlq/topics | jq
+
+# Replay up to 200 records from one topic
+curl -s -X POST 'http://localhost:8085/api/dlq/reprocess/DC-DR-DLT?max=200' | jq
+
+# Replay everything
+curl -s -X POST http://localhost:8085/api/dlq/reprocess-all | jq
+```
+
+A response summarizes the run: `{ topic, status, total, succeeded, requeued, parked, durationMs }`. Runs are serialized by a lock — a concurrent request returns HTTP `409` with `status: BUSY`.
+
+### Configuration (`application.yml` → `dlq.reprocess`)
+
+| Key | Default | Purpose |
+|---|---|---|
+| `enabled` | `true` | Master switch; when `false` all triggers return `status: DISABLED`. |
+| `topics` | *(list)* | Allow-list of DLTs eligible for replay. Requests for any other topic get `404 UNKNOWN_TOPIC`. |
+| `max-messages` | `500` | Per-topic cap per run. |
+| `max-attempts` | `3` | Replay attempts before a record is parked. |
+| `parked-topic-suffix` | `.PARKED` | Suffix for the parked topic. |
+| `time-budget-ms` | `60000` | Hard wall-clock cap for a single topic drain. |
+| `replay-timeout-ms` | `30000` | Max wait for one DB replay (including in-app retries). |
+| `schedule.enabled` | `false` | Optional unattended replay of all topics on `schedule.cron`. Off by default. |
+
+> **Operational note.** Reprocess when the DB is healthy again (circuit breaker `CLOSED`). Watch `kafka_dlq_reprocess_total{outcome="parked"}` — anything landing in a parked topic has exhausted automated recovery and needs a human.

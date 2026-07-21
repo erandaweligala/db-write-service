@@ -50,11 +50,16 @@ public class DlqMetrics {
     // kafka_dropped_events_total on /q/metrics.
     static final String METRIC_DLQ = "kafka.dlq.events";
     static final String METRIC_DROPPED = "kafka.dropped.events";
+    // Exported as kafka_dlq_reprocess_total, tagged by topic and outcome.
+    static final String METRIC_REPROCESS = "kafka.dlq.reprocess";
 
     private static final String TAG_CHANNEL = "channel";
     private static final String TAG_REASON = "reason";
+    private static final String TAG_TOPIC = "topic";
+    private static final String TAG_OUTCOME = "outcome";
 
     private static final String UNKNOWN_CHANNEL = "unknown";
+    private static final String UNKNOWN_TOPIC = "unknown";
 
     /**
      * Why a message reached a terminal state. Kept coarse on purpose so the
@@ -83,12 +88,37 @@ public class DlqMetrics {
         }
     }
 
+    /**
+     * Disposition of a record handled by the DLQ reprocessor. Mirrors
+     * {@link com.csg.airtel.aaa4j.infrastructure.dlq.DlqReprocessor.Outcome}.
+     */
+    public enum ReprocessOutcome {
+        /** Replayed to the DB successfully; removed from the DLT. */
+        SUCCEEDED("succeeded"),
+        /** Replay failed but attempts remain; re-queued to the DLT for a later run. */
+        REQUEUED("requeued"),
+        /** Replay failed with attempts exhausted (or unparseable); moved to the parked topic. */
+        PARKED("parked");
+
+        private final String label;
+
+        ReprocessOutcome(String label) {
+            this.label = label;
+        }
+
+        public String label() {
+            return label;
+        }
+    }
+
     private final MeterRegistry registry;
 
     /** "channel|reason" -> Counter, for the dead-letter disposition. */
     private final ConcurrentMap<String, Counter> dlqCounters = new ConcurrentHashMap<>();
     /** "channel|reason" -> Counter, for the dropped/ignored disposition. */
     private final ConcurrentMap<String, Counter> droppedCounters = new ConcurrentHashMap<>();
+    /** "topic|outcome" -> Counter, for records handled by the reprocessor. */
+    private final ConcurrentMap<String, Counter> reprocessCounters = new ConcurrentHashMap<>();
 
     @Inject
     public DlqMetrics(MeterRegistry registry) {
@@ -132,6 +162,33 @@ public class DlqMetrics {
      */
     public void recordDroppedEvent(String channel, Throwable throwable) {
         recordDroppedEvent(channel, classify(throwable));
+    }
+
+    // =========================================================================
+    // Reprocess disposition (DLQ replay outcomes)
+    // =========================================================================
+
+    /**
+     * Records the outcome of replaying one dead-letter record on {@code topic}
+     * (succeeded / requeued / parked). Exported as {@code kafka_dlq_reprocess_total},
+     * tagged by {@code topic} and {@code outcome}.
+     */
+    public void recordReprocess(String topic, ReprocessOutcome outcome) {
+        try {
+            String t = (topic == null || topic.isBlank()) ? UNKNOWN_TOPIC : topic;
+            ReprocessOutcome o = outcome == null ? ReprocessOutcome.PARKED : outcome;
+            String key = t + '|' + o.label();
+            Counter counter = reprocessCounters.get(key);
+            if (counter == null) {
+                counter = reprocessCounters.computeIfAbsent(key, k -> Counter.builder(METRIC_REPROCESS)
+                        .description("DLQ records handled by the reprocessor, by topic and outcome")
+                        .tags(Tags.of(TAG_TOPIC, t, TAG_OUTCOME, o.label()))
+                        .register(registry));
+            }
+            counter.increment();
+        } catch (Exception e) {
+            LoggingUtil.logWarn(log, M_RECORD, "Failed to record reprocess metric: %s", e.getMessage());
+        }
     }
 
     // =========================================================================
@@ -187,9 +244,15 @@ public class DlqMetrics {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("dlqTotal", (long) sum(dlqCounters));
         out.put("droppedTotal", (long) sum(droppedCounters));
+        out.put("reprocessTotal", (long) sum(reprocessCounters));
         out.put("dlq", breakdown(dlqCounters));
         out.put("dropped", breakdown(droppedCounters));
+        out.put("reprocess", breakdown(reprocessCounters));
         return Collections.unmodifiableMap(out);
+    }
+
+    public long getReprocessTotal() {
+        return (long) sum(reprocessCounters);
     }
 
     public long getDlqTotal() {

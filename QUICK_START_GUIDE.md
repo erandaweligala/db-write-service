@@ -55,6 +55,23 @@ curl http://localhost:8085/api/monitoring/summary | jq
 curl http://localhost:8085/api/monitoring/dlq | jq
 ```
 
+### Replay Dead-Letter Topics
+
+Records that were dead-lettered (e.g. during a DB outage) can be replayed back to the DB once it is healthy again:
+
+```bash
+# List the DLTs that can be replayed
+curl -s http://localhost:8085/api/dlq/topics | jq
+
+# Replay one topic (optionally cap with ?max=N)
+curl -s -X POST 'http://localhost:8085/api/dlq/reprocess/DC-DR-DLT?max=200' | jq
+
+# Replay every configured DLT
+curl -s -X POST http://localhost:8085/api/dlq/reprocess-all | jq
+```
+
+Each record that still fails after `max-attempts` replays is moved to a `<topic>.PARKED` topic for manual triage — nothing is dropped. See [MONITORING.md §6](MONITORING.md#6-dlq-reprocessing-replay) for the full mechanism and configuration.
+
 ### Expected Output at 1000 TPS
 
 ```json

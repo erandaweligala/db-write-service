@@ -140,6 +140,43 @@ db:
     initial-backoff-ms: 200
     max-backoff-ms: 5000
 
+# ============================================================
+# DLQ REPROCESSING (replay dead-letter topics back to the DB)
+# ============================================================
+# On-demand (and optionally scheduled) recovery of records that were dead-lettered
+# during a DB outage or a since-fixed bug. Each record is replayed through the same
+# resilient DB-write path; on success the offset is committed, on repeated failure the
+# record is re-queued (attempt+1) and, once the attempt budget is spent, moved to a
+# parked topic — never silently dropped.
+#
+# Trigger:
+#   POST /api/dlq/reprocess/{topic}?max=N   – drain one DLT
+#   POST /api/dlq/reprocess-all?max=N       – drain every configured DLT
+#   GET  /api/dlq/topics                    – list configured DLTs + reprocess metrics
+dlq:
+  reprocess:
+    enabled: true
+    bootstrap-servers: ${kafka.bootstrap.servers:localhost:9092}
+    group-id: db-write-dlq-reprocessor
+    max-messages: 500          # per-topic cap per run (0 in a request => this default)
+    max-poll-records: 100
+    poll-timeout-ms: 2000
+    time-budget-ms: 60000      # hard wall-clock cap for a single topic drain
+    replay-timeout-ms: 30000   # max wait for one DB replay (incl. in-app retries)
+    max-attempts: 3            # replay tries before a record is parked
+    parked-topic-suffix: .PARKED
+    # DLT topics eligible for replay (allow-list enforced by the REST surface).
+    topics:
+      - accounting-db-dc-DLT
+      - dr.accounting-db-dc-DLT
+      - dc-provisioning-DLT
+    # Optional unattended replay. Disabled by default; the cron only fires when
+    # schedule.enabled=true. Quartz cron syntax (sec min hour day-of-month month day-of-week).
+    schedule:
+      enabled: false
+      cron: "0 0/15 * * * ?"   # every 15 minutes when enabled
+      max-messages: 0          # 0 => use dlq.reprocess.max-messages
+
 mp:
   messaging:
     incoming:

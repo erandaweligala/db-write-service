@@ -109,6 +109,30 @@ db:
     initial-backoff-ms: 200
     max-backoff-ms: 5000
 
+# DLQ reprocessing — replay dead-letter topics back through the Oracle DB-write path.
+# Only the accounting/provisioning DLTs carry DBWriteRequest payloads; the UMS/MySQL
+# DLTs (dlt-ums-mysql-*) belong to a different service and are intentionally excluded.
+dlq:
+  reprocess:
+    enabled: true
+    bootstrap-servers: ${kafka.bootstrap.servers}
+    group-id: db-write-dlq-reprocessor
+    max-messages: 500
+    max-poll-records: 100
+    poll-timeout-ms: 2000
+    time-budget-ms: 60000
+    replay-timeout-ms: 30000
+    max-attempts: 3
+    parked-topic-suffix: .PARKED
+    topics:
+      - DC-DR-DLT
+      - DR-DC-DLT
+      - dc-provisioning-DLT
+    schedule:
+      enabled: false
+      cron: "0 0/15 * * * ?"
+      max-messages: 0
+
 mp:
   messaging:
     incoming:
