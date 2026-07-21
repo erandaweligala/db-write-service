@@ -2,6 +2,7 @@ package com.csg.airtel.aaa4j.application.controller;
 
 import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.infrastructure.DatabaseCircuitBreaker;
+import com.csg.airtel.aaa4j.infrastructure.DlqMetrics;
 import com.csg.airtel.aaa4j.infrastructure.PerformanceMetrics;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -30,6 +31,9 @@ public class PerformanceMonitoringResource {
 
     @Inject
     ExceptionMetricsService exceptionMetrics;
+
+    @Inject
+    DlqMetrics dlqMetrics;
 
     /**
      * Get current performance metrics
@@ -104,6 +108,22 @@ public class PerformanceMonitoringResource {
     }
 
     /**
+     * Snapshot of Kafka terminal-failure counts by channel and reason.
+     * <ul>
+     *   <li>{@code dlq} — records routed to a dead-letter topic (payload preserved).</li>
+     *   <li>{@code dropped} — records acknowledged and discarded (payload lost).</li>
+     * </ul>
+     * Backed by {@link DlqMetrics}; the same numbers are exported to Prometheus
+     * as {@code kafka_dlq_events_total} / {@code kafka_dropped_events_total}.
+     */
+    @GET
+    @Path("/dlq")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, Object> getDlqStats() {
+        return dlqMetrics.snapshot();
+    }
+
+    /**
      * Get performance summary
      */
     @GET
@@ -131,6 +151,11 @@ public class PerformanceMonitoringResource {
         summary.put("circuitBreaker", Map.of(
                 "state", circuitBreaker.getState().toString(),
                 "healthy", circuitBreaker.getState() == DatabaseCircuitBreaker.CircuitState.CLOSED
+        ));
+
+        summary.put("dlq", Map.of(
+                "deadLetteredTotal", dlqMetrics.getDlqTotal(),
+                "droppedTotal", dlqMetrics.getDroppedTotal()
         ));
 
         return summary;

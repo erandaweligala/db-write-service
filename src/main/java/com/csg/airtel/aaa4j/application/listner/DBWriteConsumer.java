@@ -4,6 +4,7 @@ import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.application.common.TraceIdGenerator;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
+import com.csg.airtel.aaa4j.infrastructure.DlqMetrics;
 import com.csg.airtel.aaa4j.infrastructure.KafkaFailureClassifier;
 import com.csg.airtel.aaa4j.infrastructure.ResilientDbWriteExecutor;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,8 +33,14 @@ public class DBWriteConsumer {
     private static final String MDC_USER_NAME = "userName";
     private static final String HEADER_TRACE_ID = "traceId";
 
+    // Channel identifiers used as the DLQ metric's "channel" tag. They mirror the
+    // labels already emitted in this consumer's log lines so metrics and logs line up.
+    private static final String CH_ACCOUNTING_DC = "DC-DR";
+    private static final String CH_ACCOUNTING_DR = "DR-DC";
+
     private final ResilientDbWriteExecutor executor;
     private final ExceptionMetricsService exceptionMetrics;
+    private final DlqMetrics dlqMetrics;
     private final AtomicInteger processedCounter = new AtomicInteger(0);
 
     @ConfigProperty(name = "app.site", defaultValue = "DC")
@@ -48,9 +55,11 @@ public class DBWriteConsumer {
 
     @Inject
     public DBWriteConsumer(ResilientDbWriteExecutor executor,
-                           ExceptionMetricsService exceptionMetrics) {
+                           ExceptionMetricsService exceptionMetrics,
+                           DlqMetrics dlqMetrics) {
         this.executor = executor;
         this.exceptionMetrics = exceptionMetrics;
+        this.dlqMetrics = dlqMetrics;
     }
 
     /**
@@ -80,6 +89,7 @@ public class DBWriteConsumer {
                     exceptionMetrics.recordException(throwable,
                             ExceptionMetricsService.Layer.CONSUMER,
                             ExceptionMetricsService.Source.KAFKA);
+                    dlqMetrics.recordDlqEvent(CH_ACCOUNTING_DC, throwable);
                     LoggingUtil.logError(log, "consumeAccountingEvent", throwable,
                             "[%s] DC-DR routing to DLT after retries: user=%s | eventType=%s | transient=%s",
                             site, request.getUserName(), request.getEventType(),
@@ -115,6 +125,7 @@ public class DBWriteConsumer {
                     exceptionMetrics.recordException(throwable,
                             ExceptionMetricsService.Layer.CONSUMER,
                             ExceptionMetricsService.Source.KAFKA);
+                    dlqMetrics.recordDlqEvent(CH_ACCOUNTING_DR, throwable);
                     LoggingUtil.logError(log, "consumeReverseAccountingEvent", throwable,
                             "[%s] DR-DC routing to DLT after retries: user=%s | eventType=%s | transient=%s",
                             site, request.getUserName(), request.getEventType(),
@@ -169,6 +180,7 @@ public class DBWriteConsumer {
                 exceptionMetrics.recordException(e,
                         ExceptionMetricsService.Layer.CONSUMER,
                         ExceptionMetricsService.Source.KAFKA);
+                dlqMetrics.recordDlqEvent(label, DlqMetrics.Reason.DESERIALIZATION);
                 LoggingUtil.logError(log, method, e,
                         "[%s] %s failed to deserialize payload — routing to DLT", site, label);
             } finally {
@@ -196,6 +208,7 @@ public class DBWriteConsumer {
                     exceptionMetrics.recordException(throwable,
                             ExceptionMetricsService.Layer.CONSUMER,
                             ExceptionMetricsService.Source.KAFKA);
+                    dlqMetrics.recordDlqEvent(label, throwable);
                     LoggingUtil.logError(log, method, throwable,
                             "[%s] %s routing to DLT after retries: user=%s | eventType=%s | transient=%s",
                             site, label, finalRequest.getUserName(), finalRequest.getEventType(),
@@ -220,6 +233,7 @@ public class DBWriteConsumer {
                 exceptionMetrics.recordException(e,
                         ExceptionMetricsService.Layer.CONSUMER,
                         ExceptionMetricsService.Source.KAFKA);
+                dlqMetrics.recordDroppedEvent(channelName, DlqMetrics.Reason.DESERIALIZATION);
                 LoggingUtil.logError(log, "handleProvisioningMessage", e,
                         "[%s] %s failed to deserialize payload — routing to DLT", site, channelName);
             } finally {
@@ -254,6 +268,7 @@ public class DBWriteConsumer {
                     new IllegalStateException("Missing required headers"),
                     ExceptionMetricsService.Layer.CONSUMER,
                     ExceptionMetricsService.Source.KAFKA);
+            dlqMetrics.recordDroppedEvent(channelName, DlqMetrics.Reason.MISSING_HEADERS);
             clearMdc();
             // Ack and discard — nothing we can do without a replyTopic
             return Uni.createFrom().voidItem();
@@ -270,6 +285,7 @@ public class DBWriteConsumer {
                     exceptionMetrics.recordException(throwable,
                             ExceptionMetricsService.Layer.CONSUMER,
                             ExceptionMetricsService.Source.KAFKA);
+                    dlqMetrics.recordDroppedEvent(channelName, throwable);
                     LoggingUtil.logError(log, "handleProvisioningMessage", throwable,
                             "[%s] %s routing to DLT after retries: user=%s | eventType=%s | transient=%s",
                             site, channelName, finalRequest.getUserName(), finalRequest.getEventType(),

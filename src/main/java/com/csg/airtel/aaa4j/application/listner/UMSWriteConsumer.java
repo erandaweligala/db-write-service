@@ -5,6 +5,7 @@ import com.csg.airtel.aaa4j.application.common.TraceIdGenerator;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequestUMS;
 import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.domain.service.UMSDbWriteService;
+import com.csg.airtel.aaa4j.infrastructure.DlqMetrics;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.reactive.messaging.kafka.api.IncomingKafkaRecordMetadata;
@@ -47,8 +48,15 @@ public class UMSWriteConsumer {
     private static final String MDC_USER_NAME = "userName";
     private static final String HEADER_TRACE_ID = "traceId";
 
+    // Channel identifiers used as the dropped-event metric's "channel" tag.
+    // These channels use failure-strategy: ignore, so terminal failures are
+    // acknowledged and discarded (payload lost) rather than dead-lettered.
+    private static final String CH_UMS_DC = "ums-mysql-dc";
+    private static final String CH_UMS_DR = "ums-mysql-dr";
+
     private final UMSDbWriteService mysqlWriteService;
     private final ExceptionMetricsService exceptionMetrics;
+    private final DlqMetrics dlqMetrics;
     private final AtomicInteger processedCounter = new AtomicInteger(0);
 
     @Inject
@@ -56,9 +64,11 @@ public class UMSWriteConsumer {
 
     @Inject
     public UMSWriteConsumer(UMSDbWriteService mysqlWriteService,
-                            ExceptionMetricsService exceptionMetrics) {
+                            ExceptionMetricsService exceptionMetrics,
+                            DlqMetrics dlqMetrics) {
         this.mysqlWriteService = mysqlWriteService;
         this.exceptionMetrics = exceptionMetrics;
+        this.dlqMetrics = dlqMetrics;
     }
 
     // =========================================================================
@@ -68,7 +78,7 @@ public class UMSWriteConsumer {
     @Incoming("mysql-db-write-events")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeDC(Message<String> message) {
-        return handleMessage(message, "DR");
+        return handleMessage(message, "DR", CH_UMS_DC);
     }
 
     // =========================================================================
@@ -78,14 +88,14 @@ public class UMSWriteConsumer {
     @Incoming("mysql-db-write-events-mirrored")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeDR(Message<String> message) {
-        return handleMessage(message, "DC");
+        return handleMessage(message, "DC", CH_UMS_DR);
     }
 
     // =========================================================================
     // Shared handler — write and acknowledge, no reply
     // =========================================================================
 
-    private Uni<Void> handleMessage(Message<String> message, String label) {
+    private Uni<Void> handleMessage(Message<String> message, String label, String channel) {
 
         IncomingKafkaRecordMetadata<?, ?> metadata =
                 message.getMetadata(IncomingKafkaRecordMetadata.class).orElse(null);
@@ -102,8 +112,10 @@ public class UMSWriteConsumer {
                 exceptionMetrics.recordException(e,
                         ExceptionMetricsService.Layer.CONSUMER,
                         ExceptionMetricsService.Source.KAFKA);
+                // failure-strategy: ignore — this poison message is discarded, not dead-lettered.
+                dlqMetrics.recordDroppedEvent(channel, DlqMetrics.Reason.DESERIALIZATION);
                 LoggingUtil.logError(log, "handleMessage", e,
-                        "[MySQL][%s] Failed to deserialize payload — routing to DLT", label);
+                        "[MySQL][%s] Failed to deserialize payload — discarding (failure-strategy: ignore)", label);
             } finally {
                 clearMdc();
             }
@@ -120,6 +132,8 @@ public class UMSWriteConsumer {
                     exceptionMetrics.recordException(t,
                             ExceptionMetricsService.Layer.CONSUMER,
                             ExceptionMetricsService.Source.KAFKA);
+                    // Swallowed below via recoverWithItem — the payload is lost, so count it.
+                    dlqMetrics.recordDroppedEvent(channel, t);
                     LoggingUtil.logError(log, "handleMessage", t,
                             "[MySQL][%s] Write failed for user: %s | eventType: %s | table: %s",
                             label, request.getUserName(), request.getEventType(),
