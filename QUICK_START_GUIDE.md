@@ -50,6 +50,9 @@ watch -n 2 'curl -s http://localhost:8085/api/monitoring/metrics | jq -r .curren
 
 # Get performance summary
 curl http://localhost:8085/api/monitoring/summary | jq
+
+# Get dead-letter / dropped-message counts by channel and reason
+curl http://localhost:8085/api/monitoring/dlq | jq
 ```
 
 ### Expected Output at 1000 TPS
@@ -206,6 +209,11 @@ scrape_configs:
 - `db_updates_failures` - Failed updates
 - `db_update_duration_seconds` - Operation duration
 - `db_batch_updates_total` - Batch operations
+- `kafka_consumer_fetch_manager_records_lag_max` - Kafka consumer lag
+- `kafka_dlq_events_total` - Messages routed to a dead-letter topic (by `channel`, `reason`)
+- `kafka_dropped_events_total` - Messages discarded without dead-lettering (payload lost)
+
+> **Full Kafka-lag & DLQ observability guide (PromQL, alerts, Grafana dashboard):** [MONITORING.md](MONITORING.md)
 
 ---
 
