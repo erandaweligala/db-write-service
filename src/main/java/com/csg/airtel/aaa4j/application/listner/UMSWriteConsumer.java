@@ -2,16 +2,15 @@ package com.csg.airtel.aaa4j.application.listner;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.application.common.TraceIdGenerator;
-import com.csg.airtel.aaa4j.domain.model.DBWriteRequestMySQL;
+import com.csg.airtel.aaa4j.domain.model.DBWriteRequestUMS;
 import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
-import com.csg.airtel.aaa4j.domain.service.MySQLWriteService;
+import com.csg.airtel.aaa4j.domain.service.UMSDbWriteService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.reactive.messaging.kafka.api.IncomingKafkaRecordMetadata;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.apache.kafka.common.header.Header;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.reactive.messaging.Acknowledgment;
 import org.eclipse.microprofile.reactive.messaging.Incoming;
 import org.eclipse.microprofile.reactive.messaging.Message;
@@ -41,14 +40,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>Both sites write silently. No reply is sent back to UMS.
  */
 @ApplicationScoped
-public class MySQLWriteConsumer {
+public class UMSWriteConsumer {
 
-    private static final Logger log = Logger.getLogger(MySQLWriteConsumer.class);
+    private static final Logger log = Logger.getLogger(UMSWriteConsumer.class);
     private static final String MDC_TRACE_ID  = "traceId";
     private static final String MDC_USER_NAME = "userName";
     private static final String HEADER_TRACE_ID = "traceId";
 
-    private final MySQLWriteService mysqlWriteService;
+    private final UMSDbWriteService mysqlWriteService;
     private final ExceptionMetricsService exceptionMetrics;
     private final AtomicInteger processedCounter = new AtomicInteger(0);
 
@@ -56,8 +55,8 @@ public class MySQLWriteConsumer {
     ObjectMapper objectMapper;
 
     @Inject
-    public MySQLWriteConsumer(MySQLWriteService mysqlWriteService,
-                              ExceptionMetricsService exceptionMetrics) {
+    public UMSWriteConsumer(UMSDbWriteService mysqlWriteService,
+                            ExceptionMetricsService exceptionMetrics) {
         this.mysqlWriteService = mysqlWriteService;
         this.exceptionMetrics = exceptionMetrics;
     }
@@ -66,7 +65,7 @@ public class MySQLWriteConsumer {
     // DC topic consumer
     // =========================================================================
 
-    @Incoming("mysql-db-write-events-dc")
+    @Incoming("mysql-db-write-events")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeDC(Message<String> message) {
         return handleMessage(message, "DR");
@@ -76,7 +75,7 @@ public class MySQLWriteConsumer {
     // DR topic consumer
     // =========================================================================
 
-    @Incoming("mysql-db-write-events-dr")
+    @Incoming("mysql-db-write-events-mirrored")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeDR(Message<String> message) {
         return handleMessage(message, "DC");
@@ -93,9 +92,9 @@ public class MySQLWriteConsumer {
 
         String headerTraceId = extractTraceHeader(metadata);
 
-        DBWriteRequestMySQL request;
+        DBWriteRequestUMS request;
         try {
-            request = objectMapper.readValue(message.getPayload(), DBWriteRequestMySQL.class);
+            request = objectMapper.readValue(message.getPayload(), DBWriteRequestUMS.class);
         } catch (Exception e) {
             String traceId = headerTraceId != null ? headerTraceId : TraceIdGenerator.generateTraceId();
             bindMdc(traceId, null);
@@ -150,7 +149,7 @@ public class MySQLWriteConsumer {
         return new String(h.value(), StandardCharsets.UTF_8);
     }
 
-    private static void bindMdc(String traceId, DBWriteRequestMySQL request) {
+    private static void bindMdc(String traceId, DBWriteRequestUMS request) {
         if (traceId != null) MDC.put(MDC_TRACE_ID, traceId);
         if (request != null && request.getUserName() != null)
             MDC.put(MDC_USER_NAME, request.getUserName());

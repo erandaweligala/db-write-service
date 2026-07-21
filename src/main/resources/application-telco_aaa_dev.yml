@@ -4,10 +4,10 @@ quarkus:
     port: 8085
   datasource:
     db-kind: oracle
-    username: "${DB_USER}"
-    password: "${DB_PASSWORD}"
+    username: aaa
+    password: Aaa!89nky78D
     reactive:
-      url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
+      url: oracle:thin:@localhost:1524/ORCL
     jdbc:
       url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
       driver: oracle.jdbc.OracleDriver
@@ -131,7 +131,7 @@ mp:
         dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.ByteArraySerializer
 
       # DR→DC accounting channel (reverse direction)
-      db-write-events-reverse:
+      db-write-events-mirrored:
         connector: smallrye-kafka
         topic: DR-DC
         group.id: accounting-dr-group
@@ -149,7 +149,7 @@ mp:
         dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.ByteArraySerializer
 
       # DC→DR provisioning channel (request-reply)
-      db-write-events-dr:
+      db-write-events-provisioning-mirrored:
         connector: smallrye-kafka
         topic: dc-provisioning
         group.id: provisioning-reply-group
@@ -167,7 +167,7 @@ mp:
         dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
 
       # DR→DC provisioning channel (reverse request-reply)
-      db-write-events-dc:
+      db-write-events-provisioning:
         connector: smallrye-kafka
         topic: dr-provisioning
         group.id: provisioning-reply-dc-group
@@ -179,12 +179,9 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
-        failure-strategy: dead-letter-queue
-        dead-letter-queue.topic: dr-provisioning-DLT
-        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
-        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
+        failure-strategy: ignore
 
-      mysql-db-write-events-dc:
+      mysql-db-write-events:
         connector: smallrye-kafka
         topic: ums-mysql-aws
         group.id: spring-reply-group-ums
@@ -202,7 +199,7 @@ mp:
         dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
 
 
-      mysql-db-write-events-dr:
+      mysql-db-write-events-mirrored:
         connector: smallrye-kafka
         topic: ums-mysql-dr
         group.id: spring-reply-group-ums-dr

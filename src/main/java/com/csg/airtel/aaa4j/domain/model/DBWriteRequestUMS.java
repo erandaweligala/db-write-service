@@ -16,7 +16,7 @@ import java.util.Map;
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class DBWriteRequestMySQL {
+public class DBWriteRequestUMS {
 
     private String eventType;
     private String timestamp;
@@ -29,6 +29,6 @@ public class DBWriteRequestMySQL {
     private String nativeQuery;
     private List<Object> queryParams;
 
-    private List<DBWriteRequestMySQL> relatedWrites;
+    private List<DBWriteRequestUMS> relatedWrites;
     private String traceId;
 }

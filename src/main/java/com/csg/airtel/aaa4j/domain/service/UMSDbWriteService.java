@@ -1,14 +1,13 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
-import com.csg.airtel.aaa4j.domain.model.DBWriteRequestMySQL;
-import com.csg.airtel.aaa4j.external.repository.MySQLWriteRepository;
+import com.csg.airtel.aaa4j.domain.model.DBWriteRequestUMS;
+import com.csg.airtel.aaa4j.external.repository.DBWriteRepository;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.SqlClient;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
 import org.jboss.logging.Logger;
 
 /**
@@ -26,7 +25,7 @@ import org.jboss.logging.Logger;
  * caused a silent skip via the {@code default} branch — the worst kind of bug.
  *
  * <p>Now there is exactly <b>one</b> dispatch method:
- * {@link #dispatch(SqlClient, DBWriteRequestMySQL)} — always takes a {@link SqlClient},
+ * {@link #dispatch(SqlClient, DBWriteRequestUMS)} — always takes a {@link SqlClient},
  * always returns the row count. Every execution path goes through
  * {@link Pool#withTransaction}, so:
  * <ul>
@@ -45,17 +44,17 @@ import org.jboss.logging.Logger;
  * {@code DELETE} → DELETE
  */
 @ApplicationScoped
-public class MySQLWriteService {
+public class UMSDbWriteService {
 
-    private static final Logger log = Logger.getLogger(MySQLWriteService.class);
+    private static final Logger log = Logger.getLogger(UMSDbWriteService.class);
 
-    final MySQLWriteRepository mysqlWriteRepository;
+    final DBWriteRepository dbWriteRepository;
     final Pool pool;
 
     @Inject
-    public MySQLWriteService(MySQLWriteRepository mysqlWriteRepository,
-                             @Named("mysql") Pool pool) {
-        this.mysqlWriteRepository = mysqlWriteRepository;
+    public UMSDbWriteService(DBWriteRepository dbWriteRepository,
+                             Pool pool) {
+        this.dbWriteRepository = dbWriteRepository;
         this.pool = pool;
     }
 
@@ -63,11 +62,11 @@ public class MySQLWriteService {
     // Entry points (called by MySQLWriteConsumer)
     // =========================================================================
 
-    public Uni<Void> processDbWriteRequest(DBWriteRequestMySQL request) {
+    public Uni<Void> processDbWriteRequest(DBWriteRequestUMS request) {
         return processEvent(request);
     }
 
-    public Uni<Void> processEvent(DBWriteRequestMySQL request) {
+    public Uni<Void> processEvent(DBWriteRequestUMS request) {
 
         if (request == null) {
             LoggingUtil.logWarn(log, "processEvent",
@@ -128,7 +127,7 @@ public class MySQLWriteService {
     // =========================================================================
 
     /**
-     * Dispatches a single {@link DBWriteRequestMySQL} to the correct repository
+     * Dispatches a single {@link DBWriteRequestUMS} to the correct repository
      * method and returns the affected row count.
      *
      * <p>This is the <b>single source of truth</b> for eventType routing.
@@ -141,18 +140,18 @@ public class MySQLWriteService {
      *   <li>{@code 0} — duplicate insert was silently skipped</li>
      * </ul>
      */
-    private Uni<Integer> dispatch(SqlClient conn, DBWriteRequestMySQL request) {
+    private Uni<Integer> dispatch(SqlClient conn, DBWriteRequestUMS request) {
         return switch (request.getEventType().toUpperCase()) {
 
             case "CREATE", "BULK_CREATE", "INSERT" ->
-                    mysqlWriteRepository.executeInsert(
+                    dbWriteRepository.executeInsert(
                             conn,
                             request.getTableName(),
                             request.getColumnValues()
                     );
 
             case "UPDATE", "BULK_UPDATE", "UPDATE_EVENT" ->
-                    mysqlWriteRepository.update(
+                    dbWriteRepository.update(
                             conn,
                             request.getTableName(),
                             request.getColumnValues(),
@@ -160,7 +159,7 @@ public class MySQLWriteService {
                     );
 
             case "DELETE" ->
-                    mysqlWriteRepository.executeDelete(
+                    dbWriteRepository.executeDelete(
                             conn,
                             request.getTableName(),
                             request.getWhereConditions()
@@ -182,7 +181,7 @@ public class MySQLWriteService {
                                     "null/blank for user: %s — skipping", request.getUserName());
                     yield Uni.createFrom().item(0);
                 }
-                yield mysqlWriteRepository.executeNativeQuery(
+                yield dbWriteRepository.executeNativeQuery(
                         conn,
                         request.getNativeQuery(),
                         request.getQueryParams()
@@ -211,7 +210,7 @@ public class MySQLWriteService {
      * silently skipped; other failures propagate up and roll back the entire
      * transaction including the parent.
      */
-    private Uni<Void> processRelatedWrites(SqlClient conn, DBWriteRequestMySQL request) {
+    private Uni<Void> processRelatedWrites(SqlClient conn, DBWriteRequestUMS request) {
         LoggingUtil.logDebug(log, "processRelatedWrites",
                 "[MySQL] Processing %d related writes for user=%s, parentTable=%s",
                 request.getRelatedWrites().size(),
@@ -219,7 +218,7 @@ public class MySQLWriteService {
                 request.getTableName());
 
         Uni<Void> chain = Uni.createFrom().voidItem();
-        for (DBWriteRequestMySQL related : request.getRelatedWrites()) {
+        for (DBWriteRequestUMS related : request.getRelatedWrites()) {
             chain = chain.chain(() -> {
                 LoggingUtil.logDebug(log, "processRelatedWrites",
                         "[MySQL] Related write: eventType=%s, table=%s",

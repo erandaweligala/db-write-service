@@ -14,11 +14,14 @@ import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 @ApplicationScoped
@@ -289,6 +292,66 @@ public class DBWriteRepository {
                 });
     }
 
+    public Uni<Integer> executeNativeQuery(String sql, List<Object> params) {
+        return executeNativeQuery(client, sql, params);
+    }
+
+    public Uni<Integer> executeNativeQuery(SqlClient sqlClient,
+                                           String sql,
+                                           List<Object> params) {
+
+        if (!circuitBreaker.allowRequest()) {
+            LoggingUtil.logWarn(log, "executeNativeQuery",
+                    " Circuit breaker OPEN — rejecting native query");
+            metrics.recordDbUpdateFailure();
+            return Uni.createFrom().failure(new RuntimeException("Circuit breaker is OPEN"));
+        }
+
+        if (sql == null || sql.isBlank()) {
+            LoggingUtil.logWarn(log, "executeNativeQuery",
+                    " Native query rejected — SQL is null or blank");
+            return Uni.createFrom().failure(
+                    new IllegalArgumentException("nativeQuery SQL must not be blank"));
+        }
+
+        // params may be null or empty — some queries have no bind variables
+        List<Object> safeParams = (params != null) ? params : java.util.Collections.emptyList();
+
+        // Run each param through convertValue so date strings become LocalDateTime/LocalDate
+        // consistently with INSERT/UPDATE/DELETE behaviour
+        Object[] boundValues = safeParams.stream()
+                .map(this::convertValue)
+                .toArray();
+
+        if (log.isDebugEnabled()) {
+            log.debugf(" Native query: params=%d, sql=%s", boundValues.length, sql);
+        }
+
+        Instant startTime = Instant.now();
+
+        return sqlClient.preparedQuery(sql)
+                .execute(boundValues.length > 0 ? Tuple.from(boundValues) : Tuple.tuple())
+                .map(SqlResult::rowCount)
+                .onItem().invoke(rowCount -> {
+                    Duration duration = Duration.between(startTime, Instant.now());
+                    metrics.recordDbUpdate();
+                    metrics.recordDbUpdateDuration(duration);
+                    circuitBreaker.recordSuccess();
+                    if (log.isDebugEnabled()) {
+                        log.debugf(" Native query affected %d rows in %d ms",
+                                Optional.ofNullable(rowCount), duration.toMillis());
+                    }
+                })
+                .onFailure().invoke(t -> {
+                    metrics.recordDbUpdateFailure();
+                    circuitBreaker.recordFailure();
+                    exceptionMetrics.recordException(t,
+                            ExceptionMetricsService.Layer.REPOSITORY,
+                            ExceptionMetricsService.Source.ORACLE);
+                    LoggingUtil.logError(log, "executeNativeQuery", t,
+                            "Native query failed");
+                });
+    }
 
     /**
      * Returns true if the throwable represents an Oracle unique constraint
