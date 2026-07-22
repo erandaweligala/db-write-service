@@ -28,4 +28,17 @@ public interface KafkaClientFactory {
      * responsible for flushing and closing.
      */
     Producer<String, byte[]> createProducer();
+
+    /**
+     * Best-effort guarantee that {@code parkedTopic} exists before a drain starts, so a
+     * {@code park()} during the run does not fail with {@code UNKNOWN_TOPIC_OR_PARTITION}
+     * on clusters where topic auto-creation is disabled. Implementations must never throw:
+     * if the topic cannot be verified or created, the drain still runs and a genuinely
+     * failed park aborts the run before the offset commit (no record loss).
+     *
+     * <p>Default is a no-op so mock-backed test factories need no broker admin surface.
+     */
+    default void ensureParkedTopic(String sourceTopic, String parkedTopic) {
+        // no-op by default
+    }
 }
