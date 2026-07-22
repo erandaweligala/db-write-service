@@ -29,6 +29,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -54,7 +55,10 @@ import java.util.concurrent.locks.ReentrantLock;
  * </ul>
  * Because every consumed record is either replayed, re-queued, or parked <i>before</i> the offset
  * is committed — and commits are capped at the run's starting end-offsets — nothing is dropped and
- * re-queued records are never skipped or re-processed within the same run.
+ * re-queued records are never skipped or re-processed within the same run. Re-publishes are
+ * verified after the flush: if any re-queue/park send failed (e.g. the parked topic is missing
+ * and auto-create is off), the run aborts <i>before</i> the offset commit so the affected records
+ * are re-read on the next run instead of vanishing.
  */
 @ApplicationScoped
 public class DlqReprocessor {
@@ -79,6 +83,14 @@ public class DlqReprocessor {
 
     /** Guards against overlapping runs (manual + scheduled) sharing a consumer group. */
     private final ReentrantLock runLock = new ReentrantLock();
+
+    /**
+     * First re-publish (re-queue/park) failure of the current batch, captured by the producer
+     * callback. Checked after each flush and, if set, aborts the run before the offset commit —
+     * a record whose park/re-queue never landed must not be removed from the source DLT.
+     * Runs are serialized by {@link #runLock}, so a single slot is sufficient.
+     */
+    private final AtomicReference<Exception> publishFailure = new AtomicReference<>();
 
     @ConfigProperty(name = "dlq.reprocess.enabled", defaultValue = "true")
     boolean enabled;
@@ -200,9 +212,14 @@ public class DlqReprocessor {
         long requeued = 0;
         long parked = 0;
         long total = 0;
+        publishFailure.set(null);
 
         try (Consumer<String, byte[]> consumer = clientFactory.createConsumer(groupId);
              Producer<String, byte[]> producer = clientFactory.createProducer()) {
+
+            // Provision the parked topic up front (best-effort) so park() cannot fail with
+            // UNKNOWN_TOPIC_OR_PARTITION on clusters where topic auto-creation is disabled.
+            clientFactory.ensureParkedTopic(topic, topic + parkedSuffix);
 
             List<TopicPartition> partitions = assign(consumer, topic);
             if (partitions.isEmpty()) {
@@ -254,9 +271,12 @@ public class DlqReprocessor {
                 }
 
                 // Durability barrier: make re-queued / parked records durable before the commit
-                // that removes them from the source DLT.
+                // that removes them from the source DLT. flush() alone does not surface send
+                // failures, so explicitly check the callback-captured outcome — committing after
+                // a failed park would silently drop the record.
                 if (produced) {
                     producer.flush();
+                    failIfPublishFailed(topic);
                 }
                 commitCapped(consumer, partitions, endOffsets);
 
@@ -310,6 +330,24 @@ public class DlqReprocessor {
     }
 
     /** Commit progress, capped at the run's starting end-offsets so re-queued records survive. */
+    /**
+     * Aborts the run if any re-queue/park send of the just-flushed batch failed. Called after
+     * {@code producer.flush()} (which guarantees all callbacks have fired) and before the offset
+     * commit, so the affected records stay on the source DLT and are re-read on the next run.
+     * Already-verified earlier batches keep their commits; only the failed batch is replayed.
+     */
+    void failIfPublishFailed(String topic) {
+        Exception failure = publishFailure.getAndSet(null);
+        if (failure != null) {
+            throw new IllegalStateException(
+                    "Re-publish (re-queue/park) failed during DLQ reprocess of " + topic
+                            + " — aborting before offset commit so no record is lost. "
+                            + "If the cause is UNKNOWN_TOPIC_OR_PARTITION, create the parked topic "
+                            + topic + parkedSuffix + " (or grant the reprocessor topic-create permission).",
+                    failure);
+        }
+    }
+
     private void commitCapped(Consumer<String, byte[]> consumer, List<TopicPartition> partitions,
                               Map<TopicPartition, Long> endOffsets) {
         Map<TopicPartition, OffsetAndMetadata> toCommit = new HashMap<>();
@@ -416,7 +454,13 @@ public class DlqReprocessor {
         if (error != null) {
             out.headers().add(HEADER_LAST_ERROR, truncate(error).getBytes(StandardCharsets.UTF_8));
         }
-        producer.send(out);
+        // Capture the async outcome: flush() waits for delivery but swallows failures, so the
+        // drain loop re-checks publishFailure before committing the consumer offset.
+        producer.send(out, (metadata, exception) -> {
+            if (exception != null) {
+                publishFailure.compareAndSet(null, exception);
+            }
+        });
     }
 
     private static boolean isReprocessHeader(String key) {
