@@ -20,24 +20,6 @@ import java.util.concurrent.ConcurrentMap;
  * Counts messages that reach a terminal (non-retryable) state at a Kafka consumer,
  * broken down by {@code channel} and {@code reason}, and exposes them to Prometheus
  * via Micrometer.
- *
- * <p>Two dispositions are tracked separately because their operational meaning differs:
- * <ul>
- *   <li>{@code kafka_dlq_events_total} — the record is routed to a dead-letter topic
- *       (channels configured with {@code failure-strategy: dead-letter-queue}). The
- *       payload is preserved for replay / triage.</li>
- *   <li>{@code kafka_dropped_events_total} — the record is acknowledged and discarded
- *       (channels configured with {@code failure-strategy: ignore}). The payload is
- *       <b>lost</b>; this is the higher-severity signal.</li>
- * </ul>
- *
- * <p>Complements {@link com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService},
- * which counts exceptions by root-cause type. This bean answers a different question:
- * "how many messages did we fail to persist, on which channel, and why?" — the number
- * an on-call engineer watches and a DLT-replay job reconciles against.
- *
- * <p>Hot path is allocation-free after warm-up: one {@link Counter} per
- * {@code (channel, reason)} pair is created lazily and cached.
  */
 @ApplicationScoped
 public class DlqMetrics {
@@ -66,15 +48,10 @@ public class DlqMetrics {
      * cardinality of the {@code reason} tag stays bounded.
      */
     public enum Reason {
-        /** Payload could not be deserialized into a request — a poison message. */
         DESERIALIZATION("deserialization"),
-        /** DB rejected the write permanently (constraint, bad column, syntax). */
         DB_PERMANENT("db_permanent"),
-        /** Transient DB failure that did not recover before retries were exhausted. */
         DB_TRANSIENT_EXHAUSTED("db_transient_exhausted"),
-        /** Required Kafka headers (correlationId / replyTopic) were missing. */
         MISSING_HEADERS("missing_headers"),
-        /** Fallback when the cause cannot be classified. */
         UNKNOWN("unknown");
 
         private final String label;
@@ -113,9 +90,7 @@ public class DlqMetrics {
 
     private final MeterRegistry registry;
 
-    /** "channel|reason" -> Counter, for the dead-letter disposition. */
     private final ConcurrentMap<String, Counter> dlqCounters = new ConcurrentHashMap<>();
-    /** "channel|reason" -> Counter, for the dropped/ignored disposition. */
     private final ConcurrentMap<String, Counter> droppedCounters = new ConcurrentHashMap<>();
     /** "topic|outcome" -> Counter, for records handled by the reprocessor. */
     private final ConcurrentMap<String, Counter> reprocessCounters = new ConcurrentHashMap<>();
@@ -211,7 +186,6 @@ public class DlqMetrics {
             }
             counter.increment();
         } catch (Exception e) {
-            // Metrics must never break the message pipeline.
             LoggingUtil.logWarn(log, M_RECORD, "Failed to record DLQ metric (%s): %s",
                     metric, e.getMessage());
         }
@@ -231,10 +205,6 @@ public class DlqMetrics {
                 ? Reason.DB_TRANSIENT_EXHAUSTED
                 : Reason.DB_PERMANENT;
     }
-
-    // =========================================================================
-    // Read side (for the /api/monitoring REST surface)
-    // =========================================================================
 
     /**
      * Immutable snapshot of the current counts, suitable for a JSON endpoint.

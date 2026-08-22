@@ -33,8 +33,6 @@ public class DBWriteConsumer {
     private static final String MDC_USER_NAME = "userName";
     private static final String HEADER_TRACE_ID = "traceId";
 
-    // Channel identifiers used as the DLQ metric's "channel" tag. They mirror the
-    // labels already emitted in this consumer's log lines so metrics and logs line up.
     private static final String CH_ACCOUNTING_DC = "DC-DR";
     private static final String CH_ACCOUNTING_DR = "DR-DC";
 
@@ -142,17 +140,16 @@ public class DBWriteConsumer {
     }
 
 
-    @Incoming("db-write-events-scheduler-mirrored")
-    @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
-    public Uni<Void> consumeSchedulerDr(Message<String> message) {
-        return handleStringPayload(message, "scheduler-dr", "consumeSchedulerDr");
-    }
+//    @Incoming("db-write-events-scheduler-mirrored")
+//    @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
+//    public Uni<Void> consumeSchedulerDr(Message<String> message) {
+//        return handleStringPayload(message, "scheduler-dr", "consumeSchedulerDr");
+//    }
 
 
     @Incoming("db-write-events-provisioning-mirrored")
     @Acknowledgment(Acknowledgment.Strategy.POST_PROCESSING)
     public Uni<Void> consumeAndReplyDR(Message<String> message) {
-        //return handleProvisioningMessage(message, "dc-provisioning");
         return handleStringPayload(message,"provisioning","dc-provisioning");
     }
 
