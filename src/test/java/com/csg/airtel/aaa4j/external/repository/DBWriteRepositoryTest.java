@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.external.repository;
 
 
+import com.csg.airtel.aaa4j.domain.service.ConnectivityMonitoringService;
 import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.infrastructure.DatabaseCircuitBreaker;
 import com.csg.airtel.aaa4j.infrastructure.PerformanceMetrics;
@@ -47,7 +48,8 @@ class DBWriteRepositoryTest {
         circuitBreaker = new DatabaseCircuitBreaker();
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         metrics = new PerformanceMetrics(registry);
-        ExceptionMetricsService exceptionMetrics = new ExceptionMetricsService(registry);
+        ExceptionMetricsService exceptionMetrics = new ExceptionMetricsService(registry,
+                org.mockito.Mockito.mock(ConnectivityMonitoringService.class));
         repository = new DBWriteRepository(mockPool, circuitBreaker, metrics, exceptionMetrics);
     }
 

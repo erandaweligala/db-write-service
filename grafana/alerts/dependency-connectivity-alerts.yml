@@ -1,0 +1,116 @@
+# Prometheus alerting rules for AAA DB Write dependency connectivity.
+#
+# Load into Prometheus with:
+#   rule_files:
+#     - /etc/prometheus/rules/dependency-connectivity-alerts.yml
+#
+# Grafana unified alerting can import the same file
+# (Alerting -> Alert rules -> Import from Prometheus rules).
+#
+# Metrics come from ConnectivityMonitoringService in the db-write-service. Every AAA
+# service exports the same metric names, so each expression is scoped by the
+# service="db-write-service" tag those metrics carry.
+groups:
+  - name: aaa-db-write-dependency-connectivity
+    interval: 30s
+    rules:
+
+      - alert: AaaDbWriteDependencyDown
+        expr: dependency_up{service="db-write-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: db-write-service
+        annotations:
+          summary: "{{ $labels.dependency }} unreachable from db-write-service"
+          description: >-
+            {{ $labels.dependency }} has been down for over a minute on pod {{ $labels.instance }}.
+            Check the "AAA DB Write - Dependency Connectivity" dashboard for the failure reason,
+            or GET /monitoring/connectivity on the pod.
+
+      - alert: AaaDbWriteAllDependenciesDown
+        expr: count by (instance) (dependency_up{service="db-write-service"} == 0) >= 3
+        for: 1m
+        labels:
+          severity: critical
+          service: db-write-service
+        annotations:
+          summary: "db-write-service pod {{ $labels.instance }} has lost every dependency"
+          description: >-
+            Oracle database, Redis and Kafka are all unreachable from this pod — usually a pod-level
+            network or DNS fault rather than 3 separate outages.
+
+      - alert: AaaDbWriteDependencyConnectivityErrors
+        expr: sum by (dependency, reason) (rate(dependency_connectivity_failure_count_total{service="db-write-service"}[5m])) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+          service: db-write-service
+        annotations:
+          summary: "{{ $labels.dependency }} connectivity errors ({{ $labels.reason }})"
+          description: >-
+            Sustained {{ $labels.reason }} failures against {{ $labels.dependency }} without the
+            dependency being marked down — degraded connectivity, retries are still covering it.
+
+      - alert: AaaDbWriteDependencyPoolExhausted
+        expr: sum by (dependency) (rate(dependency_connectivity_failure_count_total{service="db-write-service",reason="pool_exhausted"}[5m])) > 0
+        for: 2m
+        labels:
+          severity: warning
+          service: db-write-service
+        annotations:
+          summary: "{{ $labels.dependency }} connection pool exhausted"
+          description: >-
+            Calls are failing to borrow a connection. Check pool.max-size (Oracle) or quarkus.redis.max-pool-size (Redis)
+            against current TPS.
+
+      - alert: AaaDbWriteDependencyAuthenticationFailing
+        expr: sum by (dependency) (increase(dependency_connectivity_failure_count_total{service="db-write-service",reason="authentication_failed"}[15m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: db-write-service
+        annotations:
+          summary: "{{ $labels.dependency }} rejecting db-write-service credentials"
+          description: >-
+            Credentials for {{ $labels.dependency }} are being rejected. Rotated secret or expired
+            password — retries will not fix this.
+
+      - alert: AaaDbWriteDependencyFlapping
+        expr: increase(dependency_outage_count_total{service="db-write-service"}[30m]) >= 3
+        for: 0m
+        labels:
+          severity: warning
+          service: db-write-service
+        annotations:
+          summary: "{{ $labels.dependency }} connectivity is flapping"
+          description: >-
+            {{ $labels.dependency }} went down and recovered at least 3 times in 30 minutes.
+            Investigate the network path, or raise connectivity.failure-threshold if the blips are harmless.
+
+      - alert: AaaDbWriteDependencyProbeSlow
+        expr: >-
+          rate(dependency_probe_latency_seconds_sum{service="db-write-service",outcome="success"}[5m])
+          / rate(dependency_probe_latency_seconds_count{service="db-write-service",outcome="success"}[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          service: db-write-service
+        annotations:
+          summary: "{{ $labels.dependency }} health probe is slow"
+          description: >-
+            The connectivity probe against {{ $labels.dependency }} is averaging over 500ms.
+            The dependency is up but degraded; connectivity.probe-timeout-ms is 2s by default,
+            so an outage is close.
+
+      - alert: AaaDbWriteDependencyNoProbeData
+        expr: absent(dependency_up{service="db-write-service"})
+        for: 10m
+        labels:
+          severity: warning
+          service: db-write-service
+        annotations:
+          summary: "No connectivity metrics from db-write-service"
+          description: >-
+            dependency_up is missing from the scrape. Either every pod is down, the scrape of
+            /q/metrics is broken, or connectivity.enabled was set to false.

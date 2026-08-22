@@ -328,3 +328,17 @@ mp:
         value.serializer: org.apache.kafka.common.serialization.StringSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
 
+
+# Dependency connectivity monitoring (Oracle / Redis / Kafka)
+# Failures seen on live traffic and the periodic probes below drive the
+# dependency_up / dependency_connectivity_failure_count metrics scraped by Prometheus
+# and charted in the "AAA DB Write - Dependency Connectivity" Grafana dashboard.
+connectivity:
+  service-name: db-write-service   # value of the `service` tag on every dependency_* metric
+  enabled: true
+  failure-threshold: 3        # consecutive connectivity failures before a dependency is marked DOWN
+  probe-interval: 15s         # how often each dependency is pinged
+  probe-timeout-ms: 2000      # per-probe budget; a slower answer counts as a failure
+  probe-database: true        # SELECT 1 FROM DUAL
+  probe-redis: true           # PING
+  probe-kafka: true           # AdminClient describeCluster

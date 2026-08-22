@@ -109,6 +109,7 @@ public class ExceptionMetricsService {
     }
 
     private final MeterRegistry registry;
+    private final ConnectivityMonitoringService connectivityMonitoringService;
 
     /** exceptionType -> Counter[layer.ordinal()][source.ordinal()] — avoids per-call key concatenation. */
     private final ConcurrentMap<String, Counter[][]> perLayerCounters = new ConcurrentHashMap<>();
@@ -125,8 +126,10 @@ public class ExceptionMetricsService {
     private MultiGauge percentageGauge;
 
     @Inject
-    public ExceptionMetricsService(MeterRegistry registry) {
+    public ExceptionMetricsService(MeterRegistry registry,
+                                   ConnectivityMonitoringService connectivityMonitoringService) {
         this.registry = registry;
+        this.connectivityMonitoringService = connectivityMonitoringService;
     }
 
     @PostConstruct
@@ -177,9 +180,45 @@ public class ExceptionMetricsService {
             }
 
             incrementCounters(type, layer, src);
+            forwardToConnectivityMonitor(root, src);
         } catch (Exception e) {
             LoggingUtil.logWarn(log, M_RECORD, "Failed to record exception metric: %s", e.getMessage());
         }
+    }
+
+    /**
+     * Routes exceptions raised against an infrastructure dependency to
+     * {@link ConnectivityMonitoringService}, which decides whether they represent a
+     * connectivity fault and drives the {@code dependency_up} state machine.
+     *
+     * <p>Forwarding happens after this service's own dedup checks, so a root cause that
+     * bubbles up through several layers, or is retried, counts as one observation here
+     * and one there.</p>
+     */
+    private void forwardToConnectivityMonitor(Throwable root, Source source) {
+        if (connectivityMonitoringService == null) {
+            return;
+        }
+        ConnectivityMonitoringService.Dependency dependency = toDependency(source);
+        if (dependency != null) {
+            connectivityMonitoringService.recordFailure(dependency, root);
+        }
+    }
+
+    /**
+     * Maps an exception source onto the dependency it belongs to, or {@code null} if it is not one.
+     *
+     * <p>{@code ORACLE} and {@code MYSQL} both map to {@code DATABASE}: UMS writes and
+     * accounting writes share the one reactive pool this service injects, so there is a
+     * single database connection to be up or down.</p>
+     */
+    private static ConnectivityMonitoringService.Dependency toDependency(Source source) {
+        return switch (source) {
+            case REDIS -> ConnectivityMonitoringService.Dependency.REDIS;
+            case ORACLE, MYSQL -> ConnectivityMonitoringService.Dependency.DATABASE;
+            case KAFKA -> ConnectivityMonitoringService.Dependency.KAFKA;
+            default -> null;
+        };
     }
 
     private void incrementCounters(String type, Layer layer, Source source) {
