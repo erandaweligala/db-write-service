@@ -24,8 +24,6 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
 
     private final PoolConfig poolConfig;
 
-    private Pool corePool;
-
     @Inject
     public OraclePoolCustomizer(PoolConfig poolConfig) {
         this.poolConfig = poolConfig;
@@ -72,17 +70,23 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
                 poolConfig.tcpKeepAlive(),
                 poolConfig.tcpNoDelay());
 
-        this.corePool = OracleBuilder.pool()
+        return OracleBuilder.pool()
                 .with(poolOptions)
                 .connectingTo(connectOptions)
                 .using(input.vertx())
                 .build();
-        return corePool;
     }
 
+    // Depending on the raw io.vertx.sqlclient.Pool as an injected parameter (rather
+    // than reading a field populated by create() above as a side effect) makes CDI
+    // aware of the real dependency: it forces create() to run — and the pool to be
+    // built — before this producer executes. Without this, the two methods have no
+    // formal ordering relationship and mutinyPool() can run before create() has
+    // populated the pool, producing a null Pool.newInstance(null) that gets injected
+    // application-wide (surfacing as "this.pool is null" at every call site).
     @Produces
     @Singleton
-    io.vertx.mutiny.sqlclient.Pool mutinyPool() {
+    io.vertx.mutiny.sqlclient.Pool mutinyPool(Pool corePool) {
         return io.vertx.mutiny.sqlclient.Pool.newInstance(corePool);
     }
 }
