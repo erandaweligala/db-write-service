@@ -6,7 +6,6 @@ import io.vertx.oracleclient.OracleBuilder;
 import io.vertx.oracleclient.OracleConnectOptions;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
-import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.jboss.logging.Logger;
@@ -14,8 +13,20 @@ import org.jboss.logging.Logger;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Customizes the Oracle connection
- * Applies configuration from PoolConfig to tune pool behavior.
+ * Customizes the Oracle connection pool.
+ * Applies configuration from {@link PoolConfig} to tune pool behavior.
+ *
+ * <p><b>This class only builds the pool — it must not expose it as a bean.</b>
+ * Quarkus already registers {@code io.vertx.sqlclient.Pool} and
+ * {@code io.vertx.mutiny.sqlclient.Pool} beans that wrap whatever
+ * {@link #create(Input)} returns, and it calls {@code create} lazily, when the
+ * datasource is first injected. A local {@code @Produces} method returning
+ * {@code Pool.newInstance(field)} overrode those default beans and was invoked
+ * before {@code create} had ever run, so the field was still {@code null} and
+ * {@code newInstance(null)} handed every consumer a {@code null} pool — surfacing
+ * as {@code NullPointerException: Cannot invoke "io.vertx.mutiny.sqlclient.Pool
+ * .withTransaction(...)" because "this.pool" is null} on the first Kafka event.
+ * Inject {@code io.vertx.mutiny.sqlclient.Pool} directly and let Quarkus produce it.
  */
 @Singleton
 public class OraclePoolCustomizer implements OraclePoolCreator {
@@ -23,8 +34,6 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
     private static final Logger log = Logger.getLogger(OraclePoolCustomizer.class);
 
     private final PoolConfig poolConfig;
-
-    private Pool corePool;
 
     @Inject
     public OraclePoolCustomizer(PoolConfig poolConfig) {
@@ -72,17 +81,10 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
                 poolConfig.tcpKeepAlive(),
                 poolConfig.tcpNoDelay());
 
-        this.corePool = OracleBuilder.pool()
+        return OracleBuilder.pool()
                 .with(poolOptions)
                 .connectingTo(connectOptions)
                 .using(input.vertx())
                 .build();
-        return corePool;
-    }
-
-    @Produces
-    @Singleton
-    io.vertx.mutiny.sqlclient.Pool mutinyPool() {
-        return io.vertx.mutiny.sqlclient.Pool.newInstance(corePool);
     }
 }
