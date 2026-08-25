@@ -8,6 +8,7 @@ import io.micrometer.core.instrument.MultiGauge;
 import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.Tags;
 import io.quarkus.scheduler.Scheduled;
+import io.smallrye.common.vertx.VertxContext;
 import io.vertx.core.Context;
 import io.vertx.core.Vertx;
 import jakarta.annotation.PostConstruct;
@@ -57,6 +58,13 @@ public class ExceptionMetricsService {
 
     /** Retry dedup window: identical observations within this window are counted once. */
     static final long DEDUP_TTL_MILLIS = 5_000L;
+
+    /**
+     * Dedup scope used for observations that cannot be tied to an in-flight request:
+     * startup initialisation, scheduled jobs, and anything else reached from a plain
+     * worker thread. See {@link #contextKey()} for why those share a single scope.
+     */
+    private static final String SHARED_DEDUP_SCOPE = "-";
 
     /** Hard cap on dedup cache size so a misbehaving caller can't grow it without bound. */
     private static final int DEDUP_MAX_ENTRIES = 8_192;
@@ -328,8 +336,12 @@ public class ExceptionMetricsService {
 
     /**
      * Returns {@code true} if a record for the same {@code (type, layer, source)}
-     * within the current Vert.x context was observed within {@link #DEDUP_TTL_MILLIS}.
+     * within the current dedup scope was observed within {@link #DEDUP_TTL_MILLIS}.
      * Otherwise stamps a fresh entry and returns {@code false}.
+     *
+     * <p>The scope comes from {@link #contextKey()}: an in-flight request is scoped to its own
+     * duplicated Vert.x context, so unrelated parallel requests are never collapsed together,
+     * while background work shares one scope because nothing there identifies the operation.</p>
      */
     private boolean isDuplicateRetry(String type, Layer layer, Source source) {
         String ctxKey = contextKey();
@@ -351,16 +363,33 @@ public class ExceptionMetricsService {
         return true;
     }
 
+    /**
+     * Identifies the in-flight operation an observation belongs to, so that retry attempts
+     * of one call collapse into a single observation while unrelated failures stay apart.
+     *
+     * <p>A request runs on a <em>duplicated</em> Vert.x context that stays bound to its whole
+     * reactive chain, retry attempts included. Its identity separates concurrent requests
+     * without splitting one request's retries apart, so it is used as the scope.</p>
+     *
+     * <p>Anything else &mdash; startup initialisation, scheduled jobs, any call reached from a
+     * plain worker thread &mdash; has no such handle. {@code Vertx.getOrCreateContext()} mints a
+     * fresh context per thread there, and a retried reactive call resubscribes on a different
+     * fault-tolerance thread on each attempt, so both the context identity and the thread name
+     * change between attempts of the <em>same</em> call. Keying on either would record one
+     * observation per attempt &mdash; exactly the inflation this dedup exists to prevent &mdash;
+     * so those observations share {@link #SHARED_DEDUP_SCOPE}. Background work is low volume by
+     * nature, which is what makes the coarser scope affordable there.</p>
+     */
     private static String contextKey() {
         try {
             Context ctx = Vertx.currentContext();
-            if (ctx != null) {
+            if (ctx != null && VertxContext.isDuplicatedContext(ctx)) {
                 return "v" + System.identityHashCode(ctx);
             }
         } catch (Throwable ignore) {
-            // Fall through to thread-name fallback.
+            // No Vert.x context bound — fall through to the shared scope.
         }
-        return "t" + Thread.currentThread().getName();
+        return SHARED_DEDUP_SCOPE;
     }
 
     /** Periodic sweep of expired dedup entries. */
