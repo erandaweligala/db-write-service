@@ -1,0 +1,84 @@
+# Prometheus alerting rules for AAA DB Write application errors.
+#
+# Load into Prometheus with:
+#   rule_files:
+#     - /etc/prometheus/rules/application-errors-alerts.yml
+#
+# Grafana unified alerting can import the same file
+# (Alerting -> Alert rules -> Import from Prometheus rules).
+#
+# Metrics come from ErrorCatalog in the db-write-service. Every AAA service exports the
+# same metric names, so each expression is scoped by the service="db-write-service" tag
+# those metrics carry.
+#
+# The alerts below deliberately fire on *specific* errors rather than on a single
+# aggregate error count. An aggregate hides the thing you need to know: whether the
+# 5,000 errors are one fault repeating or fifty faults at once. Every annotation
+# names the error, its code and its reason, so the notification alone is enough to
+# tell what broke.
+groups:
+  - name: aaa-db-write-application-errors
+    interval: 30s
+    rules:
+
+      - alert: AaaDbWriteErrorSpike
+        expr: >-
+          sum by (error, code, reason) (rate(application_error_occurrences_total{service="db-write-service"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: db-write-service
+        annotations:
+          summary: "{{ $labels.error }} ({{ $labels.code }}) at >1/s in db-write-service"
+          description: >-
+            {{ $labels.error }} has been happening more than once a second for 5 minutes.
+            Reason: {{ $labels.reason }}.
+            Open the "AAA DB Write - Application Errors" dashboard, or GET /api/monitoring/errors on the pod
+            for the unredacted message and the throwing frame.
+
+      - alert: AaaDbWriteErrorStorm
+        expr: >-
+          sum by (error, code, reason) (rate(application_error_occurrences_total{service="db-write-service"}[5m])) > 20
+        for: 2m
+        labels:
+          severity: critical
+          service: db-write-service
+        annotations:
+          summary: "{{ $labels.error }} ({{ $labels.code }}) at >20/s in db-write-service"
+          description: >-
+            A single fault is repeating more than twenty times a second — a dependency is
+            almost certainly down or rejecting everything.
+            Reason: {{ $labels.reason }}.
+            Cross-check the "AAA DB Write - Dependency Connectivity" dashboard: if a dependency is
+            also DOWN, fix that first; this alert is the symptom, not the cause.
+
+      - alert: AaaDbWriteNewErrorAppeared
+        expr: >-
+          sum by (error, code, reason) (increase(application_error_occurrences_total{service="db-write-service"}[10m])) > 0
+          unless
+          sum by (error, code, reason) (increase(application_error_occurrences_total{service="db-write-service"}[1h] offset 10m)) > 0
+        for: 0m
+        labels:
+          severity: info
+          service: db-write-service
+        annotations:
+          summary: "New error in db-write-service: {{ $labels.error }} ({{ $labels.code }})"
+          description: >-
+            This fault has not been seen in the previous hour, so it is new — usually the
+            most informative signal right after a deployment.
+            Reason: {{ $labels.reason }}.
+
+      - alert: AaaDbWriteErrorCatalogSaturated
+        expr: >-
+          count(count by (error, code, reason, layer, source) (application_error_occurrences_total{service="db-write-service"})) >= 200
+        for: 15m
+        labels:
+          severity: warning
+          service: db-write-service
+        annotations:
+          summary: "db-write-service error catalog has hit its cardinality ceiling"
+          description: >-
+            200 distinct error signatures are being tracked and new ones are now folded into
+            an "(other)" row, so detail is being lost (totals stay exact). This normally means
+            a message is not normalising well and is leaking variable text into the reason
+            label. Check GET /api/monitoring/errors for rows whose reason still contains a changing value.

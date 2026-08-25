@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.application.controller;
 
+import com.csg.airtel.aaa4j.domain.service.ErrorCatalog;
 import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.infrastructure.DatabaseCircuitBreaker;
 import com.csg.airtel.aaa4j.infrastructure.DlqMetrics;
@@ -13,6 +14,7 @@ import jakarta.ws.rs.core.MediaType;
 import org.jboss.logging.Logger;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -34,6 +36,9 @@ public class PerformanceMonitoringResource {
 
     @Inject
     DlqMetrics dlqMetrics;
+
+    @Inject
+    ErrorCatalog errorCatalog;
 
     /**
      * Get current performance metrics
@@ -104,6 +109,33 @@ public class PerformanceMonitoringResource {
         Map<String, Object> response = new HashMap<>();
         response.put("total", exceptionMetrics.getTotalRootCount());
         response.put("byType", exceptionMetrics.snapshot());
+        return response;
+    }
+
+    /**
+     * The error catalog: every distinct fault the service has hit, worst first.
+     *
+     * <p>Each row names the exception, its error code, the reason it happened and how
+     * many times — the four things needed to identify a problem without reading a log.
+     * A concrete {@code sampleMessage} and the {@code origin} frame are included so the
+     * normalised {@code reason} can always be traced back to something real.
+     *
+     * <p>{@code truncated} is {@code true} when the number of distinct faults has hit the
+     * catalog ceiling and further new signatures are being folded into an
+     * {@code (other)} row; {@code total} stays exact either way.
+     *
+     * <p>Backed by {@link ErrorCatalog}; the same numbers are exported to Prometheus as
+     * {@code application_error_occurrences_total}.
+     */
+    @GET
+    @Path("/errors")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, Object> getErrorCatalog() {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("total", errorCatalog.totalOccurrences());
+        response.put("distinctErrors", errorCatalog.distinctSignatures());
+        response.put("truncated", errorCatalog.atCapacity());
+        response.put("errors", errorCatalog.snapshot());
         return response;
     }
 

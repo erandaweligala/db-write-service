@@ -110,6 +110,7 @@ public class ExceptionMetricsService {
 
     private final MeterRegistry registry;
     private final ConnectivityMonitoringService connectivityMonitoringService;
+    private final ErrorCatalog errorCatalog;
 
     /** exceptionType -> Counter[layer.ordinal()][source.ordinal()] — avoids per-call key concatenation. */
     private final ConcurrentMap<String, Counter[][]> perLayerCounters = new ConcurrentHashMap<>();
@@ -127,9 +128,11 @@ public class ExceptionMetricsService {
 
     @Inject
     public ExceptionMetricsService(MeterRegistry registry,
-                                   ConnectivityMonitoringService connectivityMonitoringService) {
+                                   ConnectivityMonitoringService connectivityMonitoringService,
+                                   ErrorCatalog errorCatalog) {
         this.registry = registry;
         this.connectivityMonitoringService = connectivityMonitoringService;
+        this.errorCatalog = errorCatalog;
     }
 
     @PostConstruct
@@ -180,10 +183,27 @@ public class ExceptionMetricsService {
             }
 
             incrementCounters(type, layer, src);
+            recordInCatalog(root, type, layer, src);
             forwardToConnectivityMonitor(root, src);
         } catch (Exception e) {
             LoggingUtil.logWarn(log, M_RECORD, "Failed to record exception metric: %s", e.getMessage());
         }
+    }
+
+    /**
+     * Adds the observation to the {@link ErrorCatalog}, which records the error code and
+     * the normalised reason alongside the occurrence count.
+     *
+     * <p>This service answers "which exception classes are we seeing"; the catalog answers
+     * "which specific faults, and why". Both are driven from this one call so no call site
+     * has to pass anything extra, and both stay in step: an observation deduped here is
+     * absent from both.</p>
+     */
+    private void recordInCatalog(Throwable root, String type, Layer layer, Source source) {
+        if (errorCatalog == null) {
+            return;
+        }
+        errorCatalog.record(root, type, layer.label(), source.label());
     }
 
     /**
