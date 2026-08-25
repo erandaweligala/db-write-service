@@ -49,7 +49,8 @@ class DBWriteRepositoryTest {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         metrics = new PerformanceMetrics(registry);
         ExceptionMetricsService exceptionMetrics = new ExceptionMetricsService(registry,
-                org.mockito.Mockito.mock(ConnectivityMonitoringService.class));
+                org.mockito.Mockito.mock(ConnectivityMonitoringService.class),
+                org.mockito.Mockito.mock(com.csg.airtel.aaa4j.domain.service.ErrorCatalog.class));
         repository = new DBWriteRepository(mockPool, circuitBreaker, metrics, exceptionMetrics);
     }
 
