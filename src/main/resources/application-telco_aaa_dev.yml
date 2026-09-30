@@ -128,6 +128,7 @@ dlq:
       - DC-DR-DLT
       - DR-DC-DLT
       - dc-provisioning-DLT
+      - scheduler-dr-DLT
     schedule:
       enabled: false
       cron: "0 0/15 * * * ?"

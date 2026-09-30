@@ -88,11 +88,11 @@ public class ResilientDbWriteExecutor {
                             ExceptionMetricsService.Source.ORACLE);
                     if (KafkaFailureClassifier.isTransient(t)) {
                         LoggingUtil.logError(log, "execute", t,
-                                "DB write FAILED after %d retries — message will go to DLT (user=%s, table=%s, eventType=%s)",
+                                "DB write FAILED after %d retries — message nacked; it reaches the DLT only if the channel failure-strategy is dead-letter-queue (user=%s, table=%s, eventType=%s)",
                                 retryAttempts, request.getUserName(), request.getTableName(), request.getEventType());
                     } else {
                         LoggingUtil.logError(log, "execute", t,
-                                "DB write PERMANENT failure — message will go to DLT (user=%s, table=%s, eventType=%s)",
+                                "DB write PERMANENT failure — message nacked; it reaches the DLT only if the channel failure-strategy is dead-letter-queue (user=%s, table=%s, eventType=%s)",
                                 request.getUserName(), request.getTableName(), request.getEventType());
                     }
                 });

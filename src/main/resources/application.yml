@@ -170,6 +170,7 @@ dlq:
       - accounting-db-dc-DLT
       - dr.accounting-db-dc-DLT
       - dc-provisioning-DLT
+      - scheduler-dr-DLT
     # Optional unattended replay. Disabled by default; the cron only fires when
     # schedule.enabled=true. Quartz cron syntax (sec min hour day-of-month month day-of-week).
     schedule:
@@ -216,23 +217,26 @@ mp:
         dead-letter-queue.topic: dr.accounting-db-dc-DLT
         dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
         dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.ByteArraySerializer
-#
-#      db-write-events-scheduler:
-#        connector: smallrye-kafka
-#        topic: scheduler-dc
-#        group.id: accounting-dr-group
-#        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
-#        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-#        auto.offset.reset: earliest
-#        enable.auto.commit: false
-#        max.poll.records: 100
-#        max.poll.interval.ms: 300000
-#        session.timeout.ms: 30000
-#        heartbeat.interval.ms: 10000
-#        failure-strategy: dead-letter-queue
-#        dead-letter-queue.topic: scheduler-dc-DLT
-#        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
-#        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+
+      # Scheduler channel (consumeScheduler). The failure-strategy MUST be set: without it
+      # SmallRye defaults to "fail", so one permanent DB error (e.g. ORA-01400) stops this
+      # consumer for good and marks liveness DOWN until the pod restarts.
+      db-write-events-scheduler:
+        connector: smallrye-kafka
+        topic: scheduler-dr
+        group.id: scheduler-dc-group
+        value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: earliest
+        enable.auto.commit: false
+        max.poll.records: 100
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        failure-strategy: dead-letter-queue
+        dead-letter-queue.topic: scheduler-dr-DLT
+        dead-letter-queue.key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        dead-letter-queue.value.serializer: org.apache.kafka.common.serialization.StringSerializer
 
 #      db-write-events-scheduler-mirrored:
 #        connector: smallrye-kafka
