@@ -28,7 +28,7 @@ public record ReprocessSummary(
         DISABLED,
         /** Another reprocess run holds the lock; try again shortly. */
         BUSY,
-        /** The requested topic is not in the configured allow-list. */
+        /** The requested topic is not in the configured allow-list (or is excluded from replay). */
         UNKNOWN_TOPIC,
         /** The topic exists in config but has no partitions on the broker (nothing to do). */
         NO_PARTITIONS,

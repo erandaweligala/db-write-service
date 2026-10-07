@@ -128,6 +128,9 @@ dlq:
       - DC-DR-DLT
       - DR-DC-DLT
       - dc-provisioning-DLT
+    # Provisioning DLT records are not replayed (left on the topic for manual triage).
+    excluded-topics:
+      - dc-provisioning-DLT
     schedule:
       enabled: false
       cron: "0 0/15 * * * ?"

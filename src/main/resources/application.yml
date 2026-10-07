@@ -170,6 +170,10 @@ dlq:
       - accounting-db-dc-DLT
       - dr.accounting-db-dc-DLT
       - dc-provisioning-DLT
+    # DLT topics never replayed, even if listed above. Provisioning DLT records are left on
+    # the topic for manual triage; every other DLT is replayed as usual.
+    excluded-topics:
+      - dc-provisioning-DLT
     # Optional unattended replay. Disabled by default; the cron only fires when
     # schedule.enabled=true. Quartz cron syntax (sec min hour day-of-month month day-of-week).
     schedule:

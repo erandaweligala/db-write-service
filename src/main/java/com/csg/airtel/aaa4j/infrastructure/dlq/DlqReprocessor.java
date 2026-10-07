@@ -59,6 +59,12 @@ import java.util.concurrent.locks.ReentrantLock;
  * verified after the flush: if any re-queue/park send failed (e.g. the parked topic is missing
  * and auto-create is off), the run aborts <i>before</i> the offset commit so the affected records
  * are re-read on the next run instead of vanishing.
+ *
+ * <h2>Excluded topics</h2>
+ * Topics listed in {@code dlq.reprocess.excluded-topics} (by default the provisioning DLT) are
+ * dropped from the allow-list: scheduled and {@code reprocess-all} runs skip them, and a
+ * single-topic request for one is rejected as {@link ReprocessSummary.Status#UNKNOWN_TOPIC}.
+ * Their records are left untouched on the DLT.
  */
 @ApplicationScoped
 public class DlqReprocessor {
@@ -98,6 +104,14 @@ public class DlqReprocessor {
     @ConfigProperty(name = "dlq.reprocess.topics", defaultValue = "")
     List<String> topics;
 
+    /**
+     * DLT topics that are never replayed, even when listed in {@code dlq.reprocess.topics}.
+     * Defaults to the provisioning DLT: provisioning records stay on their DLT for manual triage
+     * instead of being re-driven through the DB-write path, while every other DLT replays as usual.
+     */
+    @ConfigProperty(name = "dlq.reprocess.excluded-topics", defaultValue = "dc-provisioning-DLT")
+    List<String> excludedTopics;
+
     @ConfigProperty(name = "dlq.reprocess.group-id", defaultValue = "db-write-dlq-reprocessor")
     String groupId;
 
@@ -134,13 +148,32 @@ public class DlqReprocessor {
         return enabled;
     }
 
-    /** The configured, reprocess-able DLT topics (the allow-list the REST surface validates against). */
+    /**
+     * The configured, reprocess-able DLT topics (the allow-list the REST surface validates against),
+     * minus {@link #excludedTopics()}.
+     */
     public List<String> configuredTopics() {
+        List<String> excluded = excludedTopics();
         List<String> out = new ArrayList<>();
-        if (topics != null) {
-            for (String t : topics) {
-                if (t != null && !t.isBlank()) {
-                    out.add(t.trim());
+        for (String t : trimmed(topics)) {
+            if (!excluded.contains(t)) {
+                out.add(t);
+            }
+        }
+        return out;
+    }
+
+    /** DLT topics skipped by every run ({@code dlq.reprocess.excluded-topics}). */
+    public List<String> excludedTopics() {
+        return trimmed(excludedTopics);
+    }
+
+    private static List<String> trimmed(List<String> values) {
+        List<String> out = new ArrayList<>();
+        if (values != null) {
+            for (String v : values) {
+                if (v != null && !v.isBlank()) {
+                    out.add(v.trim());
                 }
             }
         }
