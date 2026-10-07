@@ -45,6 +45,7 @@ class DlqReprocessorTest {
 
     private static final String TOPIC = "DC-DR-DLT";
     private static final String PARKED_SUFFIX = ".PARKED";
+    private static final String PROVISIONING_TOPIC = "dc-provisioning-DLT";
 
     private ObjectMapper objectMapper;
     private SimpleMeterRegistry registry;
@@ -290,6 +291,70 @@ class DlqReprocessorTest {
     void reprocessTopic_unknownTopicRejected() {
         DlqReprocessor r = newReprocessor(noopFactory());
         ReprocessSummary summary = r.reprocessTopic("some-other-topic", 0);
+        assertEquals(ReprocessSummary.Status.UNKNOWN_TOPIC, summary.status());
+    }
+
+    @Test
+    @DisplayName("excluded provisioning DLT is skipped by reprocessAll while other DLTs still drain")
+    void reprocessAll_skipsExcludedProvisioningTopic() {
+        TopicPartition tp = new TopicPartition(TOPIC, 0);
+        MockConsumer<String, byte[]> consumer = new MockConsumer<>(OffsetResetStrategy.EARLIEST);
+        consumer.updatePartitions(TOPIC, List.of(
+                new PartitionInfo(TOPIC, 0, Node.noNode(), new Node[]{}, new Node[]{})));
+        consumer.updateBeginningOffsets(Map.of(tp, 0L));
+        consumer.updateEndOffsets(Map.of(tp, 0L));
+
+        List<String> drained = new java.util.ArrayList<>();
+        KafkaClientFactory factory = new KafkaClientFactory() {
+            @Override
+            public Consumer<String, byte[]> createConsumer(String groupId) {
+                return consumer;
+            }
+
+            @Override
+            public Producer<String, byte[]> createProducer() {
+                return producer;
+            }
+
+            @Override
+            public void ensureParkedTopic(String sourceTopic, String parkedTopic) {
+                drained.add(sourceTopic);
+            }
+        };
+
+        DlqReprocessor r = newReprocessor(factory);
+        r.topics = List.of(TOPIC, PROVISIONING_TOPIC);
+        r.excludedTopics = List.of(PROVISIONING_TOPIC);
+
+        Map<String, ReprocessSummary> results = r.reprocessAll(0);
+
+        assertEquals(Set.of(TOPIC), results.keySet(), "only the non-excluded DLT is reprocessed");
+        assertEquals(ReprocessSummary.Status.COMPLETED, results.get(TOPIC).status());
+        assertEquals(List.of(TOPIC), drained, "the provisioning DLT must never be touched");
+        assertEquals(List.of(TOPIC), r.configuredTopics());
+        assertEquals(List.of(PROVISIONING_TOPIC), r.excludedTopics());
+    }
+
+    @Test
+    @DisplayName("reprocessTopic rejects an excluded provisioning DLT without opening a consumer")
+    void reprocessTopic_excludedProvisioningTopicRejected() {
+        KafkaClientFactory factory = new KafkaClientFactory() {
+            @Override
+            public Consumer<String, byte[]> createConsumer(String groupId) {
+                throw new AssertionError("excluded topic must not be drained");
+            }
+
+            @Override
+            public Producer<String, byte[]> createProducer() {
+                throw new AssertionError("excluded topic must not be drained");
+            }
+        };
+        DlqReprocessor r = newReprocessor(factory);
+        r.topics = List.of(TOPIC, PROVISIONING_TOPIC);
+        r.excludedTopics = List.of(" " + PROVISIONING_TOPIC + " ");
+
+        ReprocessSummary summary = r.reprocessTopic(PROVISIONING_TOPIC, 0);
+
         assertEquals(ReprocessSummary.Status.UNKNOWN_TOPIC, summary.status());
     }
 

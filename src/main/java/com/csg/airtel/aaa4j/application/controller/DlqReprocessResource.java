@@ -24,7 +24,7 @@ import java.util.Map;
  * which only reports how many records were dead-lettered — this endpoint actually recovers them.
  *
  * <ul>
- *   <li>{@code GET  /api/dlq/topics}            — configured DLT topics + current reprocess metrics.</li>
+ *   <li>{@code GET  /api/dlq/topics}            — configured DLT topics, excluded topics + current reprocess metrics.</li>
  *   <li>{@code POST /api/dlq/reprocess/{topic}} — drain one DLT (optional {@code ?max=N}).</li>
  *   <li>{@code POST /api/dlq/reprocess-all}     — drain every configured DLT (optional {@code ?max=N}).</li>
  * </ul>
@@ -50,6 +50,7 @@ public class DlqReprocessResource {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("enabled", reprocessor.isEnabled());
         out.put("topics", reprocessor.configuredTopics());
+        out.put("excludedTopics", reprocessor.excludedTopics());
         out.put("reprocessTotal", dlqMetrics.getReprocessTotal());
         return out;
     }
